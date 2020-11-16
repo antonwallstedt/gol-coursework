@@ -8,8 +8,12 @@ type distributorChannels struct {
 
 // distributor divides the work between workers and interacts with other goroutines.
 func distributor(p Params, c distributorChannels) {
-
 	// TODO: Create a 2D slice to store the world.
+	newWorld := make([][]byte, p.ImageHeight)
+	for i := range newWorld {
+		newWorld[i] = make([]byte, p.ImageWidth)
+	}
+
 	// TODO: For all initially alive cells send a CellFlipped Event.
 
 	turn := 0
