@@ -15,8 +15,8 @@ type Params struct {
 // Run starts the processing of Game of Life. It should initialise channels and goroutines.
 func Run(p Params, events chan<- Event, keyPresses <-chan rune) {
 	ioFileName := make(chan string)
-	iOInput := make(chan uint8)
-	iOOutput := make(chan uint8)
+	ioInput := make(chan uint8)
+	ioOutput := make(chan uint8)
 	ioCommand := make(chan ioCommand)
 	ioIdle := make(chan bool)
 
@@ -25,8 +25,8 @@ func Run(p Params, events chan<- Event, keyPresses <-chan rune) {
 		ioCommand,
 		ioIdle,
 		ioFileName,
-		iOInput,
-		iOOutput,
+		ioInput,
+		ioOutput,
 	}
 	go distributor(p, distributorChannels)
 
@@ -34,8 +34,8 @@ func Run(p Params, events chan<- Event, keyPresses <-chan rune) {
 		command:  ioCommand,
 		idle:     ioIdle,
 		filename: ioFileName,
-		output:   iOOutput,
-		input:    iOInput,
+		output:   ioOutput,
+		input:    ioInput,
 	}
 
 	go startIo(p, ioChannels)
