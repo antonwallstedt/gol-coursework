@@ -19,12 +19,15 @@ type distributorChannels struct {
 }
 
 func aliveNeighbour(p Params, y, x int, world [][]byte) int {
+
 	var a int
 	var b int
+
 	prevX := x - 1
 	aftX := x + 1
 	prevY := y - 1
 	aftY := y + 1
+
 	if x == 0 {
 		prevX = p.ImageWidth - 1
 	}
@@ -44,6 +47,7 @@ func aliveNeighbour(p Params, y, x int, world [][]byte) int {
 	a = b / 255
 
 	return a
+
 }
 func swappinng(oldWorld [][]byte, newWorld [][]byte) {
 	x := oldWorld
