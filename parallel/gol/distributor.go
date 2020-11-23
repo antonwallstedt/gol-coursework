@@ -6,8 +6,8 @@ import (
 	"uk.ac.bris.cs/gameoflife/util"
 )
 
-const ALIVE = 255
-const DEAD = 0
+const Alive = 255
+const Dead = 0
 
 type distributorChannels struct {
 	events     chan<- Event
@@ -27,7 +27,6 @@ func aliveNeighbour(p Params, y, x int, world [][]byte) int {
 	aftX := x + 1
 	prevY := y - 1
 	aftY := y + 1
-
 	if x == 0 {
 		prevX = p.ImageWidth - 1
 	}
@@ -41,13 +40,11 @@ func aliveNeighbour(p Params, y, x int, world [][]byte) int {
 		aftY = 0
 	}
 
-	b = int(world[y][prevX]) + int(world[y][aftX]) + int(world[prevY][prevX]) +
-		int(world[prevY][x]) + int(world[prevY][aftX]) + int(world[aftY][aftX]) +
-		int(world[aftY][prevX]) + int(world[aftY][x])
+	b = int(world[y][prevX]) + int(world[y][aftX]) + int(world[prevY][prevX]) + int(world[prevY][x]) + int(world[prevY][aftX]) + int(world[aftY][aftX]) + int(world[aftY][prevX]) + int(world[aftY][x])
+
 	a = b / 255
 
 	return a
-
 }
 
 // distributor divides the work between workers and interacts with other goroutines.
@@ -61,11 +58,11 @@ func distributor(p Params, c distributorChannels) {
 	var FinalTurnComplete FinalTurnComplete
 
 	// TODO: Create a 2D slice to store the world.
-	// TODO: For all initially alive cells send a CellFlipped Event.
 	world := make([][]byte, p.ImageHeight)
 	for i := range world {
 		world[i] = make([]byte, p.ImageWidth)
 	}
+	// TODO: For all initially alive cells send a CellFlipped Event.
 
 	turn := 0
 	for y := 0; y < p.ImageHeight; y++ {
@@ -73,28 +70,33 @@ func distributor(p Params, c distributorChannels) {
 			a := aliveNeighbour(p, y, x, world)
 			input := <-c.ioInput
 			world[y][x] = input
-			if world[y][x] == ALIVE {
+			if world[y][x] == Alive {
+
 				if a == 2 || a == 3 {
 					world[y][x] = 255
+					listCell = append(listCell, Cell)
+
 				} else {
-					world[y][x] = DEAD
+					world[y][x] = Dead
 					Cell.X = x
 					Cell.Y = y
 					CellFlip.Cell = Cell
 					CellFlip.CompletedTurns = turn
 					c.events <- CellFlip
 					listCell = append(listCell, Cell)
+
 				}
 			} else {
 				if a == 3 {
-					world[y][x] = ALIVE
+					world[y][x] = Alive
 					Cell.X = x
 					Cell.Y = y
 					CellFlip.Cell = Cell
 					CellFlip.CompletedTurns = turn
 					c.events <- CellFlip
+
 				} else {
-					world[y][x] = DEAD
+					world[y][x] = Dead
 				}
 			}
 
