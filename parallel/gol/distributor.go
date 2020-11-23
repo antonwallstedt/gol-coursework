@@ -195,6 +195,13 @@ func distributor(p Params, c distributorChannels) {
 		out[i] = make(chan [][]byte)
 	}
 
+		}
+	}
+	TurnComplete.CompletedTurns = turn
+	c.events <- TurnComplete
+	FinalTurnComplete.Alive = listCell
+	FinalTurnComplete.CompletedTurns = turn
+	c.events <- FinalTurnComplete
 	// TODO: Execute all turns of the Game of Life.
 	// TODO: Send correct Events when required, e.g. CellFlipped, TurnComplete and FinalTurnComplete.
 	//		 See event.go for a list of all events.
