@@ -65,6 +65,7 @@ func distributor(p Params, c distributorChannels) {
 	// TODO: For all initially alive cells send a CellFlipped Event.
 
 	turn := 0
+	
 	for y := 0; y < p.ImageHeight; y++ {
 		for x := 0; x < p.ImageWidth; x++ {
 			a := aliveNeighbour(p, y, x, world)
