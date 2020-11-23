@@ -8,7 +8,7 @@ import (
 	"uk.ac.bris.cs/gameoflife/sdl"
 )
 
-// main is the function called when starting Game of Life ff with 'go run .'
+// main is the function called when starting Game of Life with 'go run .'
 func main() {
 	runtime.LockOSThread()
 	var params gol.Params
