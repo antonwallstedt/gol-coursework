@@ -62,61 +62,79 @@ func distributor(p Params, c distributorChannels) {
 	for i := range world {
 		world[i] = make([]byte, p.ImageWidth)
 	}
+	newWorld := make([][]byte, p.ImageHeight)
+	for i := range newWorld {
+		newWorld[i] = make([]byte, p.ImageWidth)
+	}
 	// TODO: For all initially alive cells send a CellFlipped Event.
 
 	turn := 0
-	
-	for y := 0; y < p.ImageHeight; y++ {
-		for x := 0; x < p.ImageWidth; x++ {
-			a := aliveNeighbour(p, y, x, world)
-			input := <-c.ioInput
-			world[y][x] = input
-			if world[y][x] == Alive {
 
-				if a == 2 || a == 3 {
-					world[y][x] = 255
-					listCell = append(listCell, Cell)
+	for turn < p.Turns {
+		fmt.Println(turn)
+		for y := 0; y < p.ImageHeight; y++ {
+			for x := 0; x < p.ImageWidth; x++ {
+				a := aliveNeighbour(p, y, x, world)
+				input := <-c.ioInput
+				world[y][x] = input
+				if world[y][x] == Alive {
 
+					if a == 2 || a == 3 {
+						newWorld[y][x] = 255
+
+					} else {
+						newWorld[y][x] = Dead
+						Cell.X = x
+						Cell.Y = y
+						CellFlip.Cell = Cell
+						CellFlip.CompletedTurns = turn
+						c.events <- CellFlip
+						TurnComplete.CompletedTurns = turn
+						c.events <- TurnComplete
+
+					}
 				} else {
-					world[y][x] = Dead
-					Cell.X = x
-					Cell.Y = y
-					CellFlip.Cell = Cell
-					CellFlip.CompletedTurns = turn
-					c.events <- CellFlip
-					listCell = append(listCell, Cell)
+					if a == 3 {
+						newWorld[y][x] = Alive
+						Cell.X = x
+						Cell.Y = y
+						CellFlip.Cell = Cell
+						CellFlip.CompletedTurns = turn
+						c.events <- CellFlip
+						TurnComplete.CompletedTurns = turn
+						c.events <- TurnComplete
 
+					} else {
+						newWorld[y][x] = Dead
+					}
 				}
-			} else {
-				if a == 3 {
-					world[y][x] = Alive
-					Cell.X = x
-					Cell.Y = y
-					CellFlip.Cell = Cell
-					CellFlip.CompletedTurns = turn
-					c.events <- CellFlip
 
-				} else {
-					world[y][x] = Dead
+			}
+		}
+
+		for y := 0; y < p.ImageHeight; y++ {
+			for x := 0; x < p.ImageWidth; x++ {
+				if world[y][x] == Alive {
+					listCell = append(listCell, util.Cell{X: x, Y: y})
 				}
 			}
-
 		}
+
+		FinalTurnComplete.Alive = listCell
+		FinalTurnComplete.CompletedTurns = turn
+		c.events <- FinalTurnComplete
+
+		// TODO: Execute all turns of the Game of Life.
+		// TODO: Send correct Events when required, e.g. CellFlipped, TurnComplete and FinalTurnComplete.
+		//		 See event.go for a list of all events.
+
+		// Make sure that the Io has finished any output before exiting.
+		c.ioCommand <- ioCheckIdle
+		<-c.ioIdle
+
+		c.events <- StateChange{turn, Quitting}
+		// Close the channel to stop the SDL goroutine gracefully. Removing may cause deadlock.
+		close(c.events)
+		turn++
 	}
-	TurnComplete.CompletedTurns = turn
-	c.events <- TurnComplete
-	FinalTurnComplete.Alive = listCell
-	FinalTurnComplete.CompletedTurns = turn
-	c.events <- FinalTurnComplete
-	// TODO: Execute all turns of the Game of Life.
-	// TODO: Send correct Events when required, e.g. CellFlipped, TurnComplete and FinalTurnComplete.
-	//		 See event.go for a list of all events.
-
-	// Make sure that the Io has finished any output before exiting.
-	c.ioCommand <- ioCheckIdle
-	<-c.ioIdle
-
-	c.events <- StateChange{turn, Quitting}
-	// Close the channel to stop the SDL goroutine gracefully. Removing may cause deadlock.
-	close(c.events)
 }
