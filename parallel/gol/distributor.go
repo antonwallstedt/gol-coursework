@@ -27,7 +27,6 @@ func aliveNeighbour(p Params, y, x int, world [][]byte) int {
 	aftX := x + 1
 	prevY := y - 1
 	aftY := y + 1
-
 	if x == 0 {
 		prevX = p.ImageWidth - 1
 	}
@@ -41,13 +40,11 @@ func aliveNeighbour(p Params, y, x int, world [][]byte) int {
 		aftY = 0
 	}
 
-	b = int(world[y][prevX]) + int(world[y][aftX]) + int(world[prevY][prevX]) +
-		int(world[prevY][x]) + int(world[prevY][aftX]) + int(world[aftY][aftX]) +
-		int(world[aftY][prevX]) + int(world[aftY][x])
+	b = int(world[y][prevX]) + int(world[y][aftX]) + int(world[prevY][prevX]) + int(world[prevY][x]) + int(world[prevY][aftX]) + int(world[aftY][aftX]) + int(world[aftY][prevX]) + int(world[aftY][x])
+
 	a = b / 255
 
 	return a
-
 }
 func swappinng(oldWorld [][]byte, newWorld [][]byte) {
 	x := oldWorld
@@ -66,7 +63,6 @@ func distributor(p Params, c distributorChannels) {
 	var FinalTurnComplete FinalTurnComplete
 
 	// TODO: Create a 2D slice to store the world.
-	// TODO: For all initially alive cells send a CellFlipped Event.
 	world := make([][]byte, p.ImageHeight)
 	for i := range world {
 		world[i] = make([]byte, p.ImageWidth)
@@ -87,13 +83,13 @@ func distributor(p Params, c distributorChannels) {
 		for y := 0; y < p.ImageHeight; y++ {
 			for x := 0; x < p.ImageWidth; x++ {
 				a := aliveNeighbour(p, y, x, world)
-				if world[y][x] == Alive {
+				if world[y][x] == ALIVE {
 					if a == 2 || a == 3 {
-						newWorld[y][x] = Alive
+						newWorld[y][x] = ALIVE
 						// listCell = append(listCell, util.Cell{X: x, Y: y})
 
 					} else {
-						newWorld[y][x] = Dead
+						newWorld[y][x] = DEAD
 						Cell.X = x
 						Cell.Y = y
 						CellFlip.Cell = Cell
@@ -103,7 +99,7 @@ func distributor(p Params, c distributorChannels) {
 					}
 				} else {
 					if a == 3 {
-						newWorld[y][x] = Alive
+						newWorld[y][x] = ALIVE
 						Cell.X = x
 						Cell.Y = y
 						CellFlip.Cell = Cell
@@ -112,7 +108,7 @@ func distributor(p Params, c distributorChannels) {
 						// listCell = append(listCell, util.Cell{X: x, Y: y})
 
 					} else {
-						newWorld[y][x] = Dead
+						newWorld[y][x] = DEAD
 					}
 				}
 			}
@@ -130,7 +126,7 @@ func distributor(p Params, c distributorChannels) {
 
 	for y := 0; y < p.ImageHeight; y++ {
 		for x := 0; x < p.ImageWidth; x++ {
-			if world[y][x] == Alive {
+			if world[y][x] == ALIVE {
 				listCell = append(listCell, util.Cell{X: x, Y: y})
 			}
 		}
@@ -139,13 +135,6 @@ func distributor(p Params, c distributorChannels) {
 	FinalTurnComplete.CompletedTurns = turn
 	c.events <- FinalTurnComplete
 
-		}
-	}
-	TurnComplete.CompletedTurns = turn
-	c.events <- TurnComplete
-	FinalTurnComplete.Alive = listCell
-	FinalTurnComplete.CompletedTurns = turn
-	c.events <- FinalTurnComplete
 	// TODO: Execute all turns of the Game of Life.
 	// TODO: Send correct Events when required, e.g. CellFlipped, TurnComplete and FinalTurnComplete.
 	//		 See event.go for a list of all events.
