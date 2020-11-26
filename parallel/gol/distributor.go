@@ -76,10 +76,13 @@ func worker(p Params, startY, endY, endX int, world [][]byte, newWorld [][]byte,
 	world = newWorld
 	newWorld = x
 
-	for y := 0; y < realWorkerHeight; y++ {
-		for x := 0; x < endX; x++ {
-			if world[y][x] == Alive {
-				liveCell = append(liveCell, util.Cell{X: x, Y: y})
+	if turn == p.Turns {
+		fmt.Println("mathcing")
+		for y := 0; y < realWorkerHeight; y++ {
+			for x := 0; x < endX; x++ {
+				if world[y][x] == Alive {
+					liveCell = append(liveCell, util.Cell{X: x, Y: y})
+				}
 			}
 		}
 	}
