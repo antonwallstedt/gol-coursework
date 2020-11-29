@@ -2,12 +2,13 @@ package gol
 
 import (
 	"fmt"
+	"time"
 
 	"uk.ac.bris.cs/gameoflife/util"
 )
 
-const Alive = 255
-const Dead = 0
+const ALIVE = 255
+const DEAD = 0
 
 type distributorChannels struct {
 	events     chan<- Event
