@@ -44,30 +44,18 @@ func buildWorkerWorld(world [][]byte, workerHeight, imageHeight, imageWidth, cur
 		// lastWokerHeight := modOfWorkerHeight + workerHeight
 		var lastWokerHeight int
 		//This is for 16*16 file, we need to add the mod from dividing total height and add that thing to last worker world
-		if imageHeight == 16 {
-			lastWokerHeight = modOfWorkerHeight + workerHeight
 
-			for y := 1; y <= lastWokerHeight; y++ {
-				for x := 0; x < imageWidth; x++ {
-					workerWorld[y][x] = world[currentThreads*workerHeight+y-1][x]
-				}
-			}
-			for x := 0; x < imageWidth; x++ {
-				workerWorld[lastWokerHeight+1][x] = world[((currentThreads+1)*workerHeight+imageHeight)%imageHeight][x]
-			}
-			//I try to debug when the input file is 64*64, we need to add another byte to the last wokeWorld in order to get all the element in the world
-		} else if imageHeight == 64 {
-			lastWokerHeight = modOfWorkerHeight + 1 + workerHeight
+		lastWokerHeight = modOfWorkerHeight + workerHeight
 
-			for y := 1; y <= lastWokerHeight; y++ {
-				for x := 0; x < imageWidth; x++ {
-					workerWorld[y][x] = world[currentThreads*workerHeight+y-1][x]
-				}
-			}
+		for y := 1; y <= lastWokerHeight; y++ {
 			for x := 0; x < imageWidth; x++ {
-				workerWorld[lastWokerHeight+1][x] = world[((currentThreads+1)*workerHeight+imageHeight)%imageHeight][x]
+				workerWorld[y][x] = world[currentThreads*workerHeight+y-1][x]
 			}
 		}
+		for x := 0; x < imageWidth; x++ {
+			workerWorld[lastWokerHeight+1][x] = world[((currentThreads+1)*workerHeight+imageHeight)%imageHeight][x]
+		}
+		//I try to debug when the input file is 64*64, we need to add another byte to the last wokeWorld in order to get all the element in the world
 
 	} else {
 
