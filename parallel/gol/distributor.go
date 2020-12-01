@@ -6,11 +6,12 @@ import (
 	"uk.ac.bris.cs/gameoflife/util"
 )
 
-// ALIVE : byte value for alive cells
 const ALIVE = 255
-
-// DEAD : byte value for dead cells
 const DEAD = 0
+
+type workerWorld struct {
+	data [][]byte
+}
 
 type distributorChannels struct {
 	events     chan<- Event
@@ -26,21 +27,6 @@ Doesn't allow negative numbers so m is added to x before computing mod. */
 func mod(x, m int) int {
 	return (x + m) % m
 }
-
-/* OLD FUNCTION
-func calculateNeighbours(p Params, x, y int, world [][]byte) int {
-	neighbours := 0
-	for i := -1; i <= 1; i++ {
-		for j := -1; j <= 1; j++ {
-			if i != 0 || j != 0 {
-				if world[mod(y+i, p.ImageHeight)][mod(x+j, p.ImageWidth)] == ALIVE {
-					neighbours++
-				}
-			}
-		}
-	}
-	return neighbours
-} */
 
 /* calculateNeighbours : Counts the number of alive neighbours around a given cell.
 Does it in a closed domain, i.e. the top-most pixels are connected to the bottom,
@@ -61,40 +47,13 @@ func calculateNeighbours(x, y int, world [][]byte) int {
 	return neighbours
 }
 
-/* OLD FUNCTION
+/* calculateNextState : Completes one whole evolution of the game and returns the new state */
 func calculateNextState(p Params, world [][]byte) [][]byte {
-	newWorld := make([][]byte, p.ImageHeight)
-	for i := range newWorld {
-		newWorld[i] = make([]byte, p.ImageWidth)
-	}
-	for y := 0; y < p.ImageHeight; y++ {
-		for x := 0; x < p.ImageWidth; x++ {
-			neighbours := calculateNeighbours(p, x, y, world)
-			if world[y][x] == ALIVE {
-				if neighbours == 2 || neighbours == 3 {
-					newWorld[y][x] = ALIVE
-				} else {
-					newWorld[y][x] = DEAD
-				}
-			} else {
-				if neighbours == 3 {
-					newWorld[y][x] = ALIVE
-				} else {
-					newWorld[y][x] = DEAD
-				}
-			}
-		}
-	}
-	return newWorld
-} */
-
-/* calculateNextState : completes one whole evolution of the game and returns the new state */
-func calculateNextState(startY, startX, endY, endX int, world [][]byte) [][]byte {
 	height := len(world)
-	width := len(world[0])
+	width := p.ImageWidth
 	newWorld := makeWorld(height, width)
-	for y := startY; y <= endY; y++ {
-		for x := startX; x < endX; x++ {
+	for y := 0; y < height; y++ {
+		for x := 0; x < width; x++ {
 			neighbours := calculateNeighbours(x, y, world)
 			if world[y][x] == ALIVE {
 				if neighbours == 2 || neighbours == 3 {
@@ -114,10 +73,9 @@ func calculateNextState(startY, startX, endY, endX int, world [][]byte) [][]byte
 	return newWorld
 }
 
-/* calculateAliveCells : locates alive cells in a given world and returns a slice containing coordinates to those cells */
+/* calculateAliveCells : Locates alive cells in a given world and returns a slice containing coordinates to those cells */
 func calculateAliveCells(p Params, world [][]byte) []util.Cell {
 	aliveCells := []util.Cell{}
-
 	for y := 0; y < p.ImageHeight; y++ {
 		for x := 0; x < p.ImageWidth; x++ {
 			if world[y][x] == ALIVE {
@@ -128,13 +86,7 @@ func calculateAliveCells(p Params, world [][]byte) []util.Cell {
 	return aliveCells
 }
 
-/* worker : takes in part of a world, calculates next step and sends results down a channel for re-assembly */
-func worker(startY, startX, endY, endX int, world [][]byte, c chan<- [][]byte) {
-	newWorld := calculateNextState(startY, startX, endY, endX, world)
-	c <- newWorld
-}
-
-/* makeWorld : creates a 2x2 world from given height and width */
+/* makeWorld : Creates a 2D world from given height and width */
 func makeWorld(height, width int) [][]byte {
 	world := make([][]byte, height)
 	for i := range world {
@@ -143,7 +95,77 @@ func makeWorld(height, width int) [][]byte {
 	return world
 }
 
-/* makeImmutableWorld : takes a world and returns an immutable version of it */
+/* makeWorkerWorld : Create worker worlds from a given world.
+This will split a world up into a given number of parts, pad them out with one extra row at the top and one at the bottom, and then fill
+those rows with the pixel values of the bottom and top most rows of the other parts surrounding the current part being worked on. */
+func makeWorkerWorlds(p Params, world [][]byte) []workerWorld {
+	workerWorlds := []workerWorld{}
+
+	// Divide the image height into multiple parts, as image sizes and number of threads are integer values, the division will be floored.
+	// The worker heights corresponding to each thread to be run will be stored in an array, this way for each worker we can load in its
+	// worker height, and if any one of the worker heights need to be modified (e.g. to account for uneven division) this can easily be done.
+	workerHeights := make([]int, p.Threads)
+	for i := range workerHeights {
+		workerHeights[i] = p.ImageHeight / p.Threads
+	}
+
+	// If the number of threads doesn't evenly divide the image height, we need to have one worker working on a different image
+	// height to account for the flooring, this height will be +1 in size relative to the other parts, so we set the worker height
+	// corresponding to the final worker thread to be +1 in height.
+	remainder := p.ImageHeight % p.Threads
+	if remainder != 0 {
+		for i := 0; i < remainder; i++ {
+			workerHeights[i]++
+		}
+	}
+
+	/* Split picture up into a number of parts corresponding to the number of threads that will be run, pad them out with an extra two rows
+	(top and bottom), to account for the halo rows so that when the next state is calculated for each part, it will take into account the
+	adjacent pixels that were disconnected when splitting. */
+	currHeight := 0
+	for i := 0; i < p.Threads; i++ {
+		newWorld := makeWorld(workerHeights[i]+2, p.ImageWidth)
+		currHeight += workerHeights[i]
+
+		// Top most pixels of the first part must be connected with the bottom most pixels of the last part,
+		// and bottom most pixels must correspond to top most pixels of second part, so fill out padding with those values
+		if i == 0 {
+			newWorld[0] = world[p.ImageHeight-1]          // top most pixels
+			newWorld[len(newWorld)-1] = world[currHeight] // bottom most pixels
+			for y := 1; y <= workerHeights[i]; y++ {      // remainding values
+				newWorld[y] = world[y-1]
+			}
+			workerWorlds = append(workerWorlds, workerWorld{data: newWorld})
+		} else if i == p.Threads-1 {
+			newWorld[0] = world[currHeight-workerHeights[i]-1] // top most pixels
+			newWorld[len(newWorld)-1] = world[0]               // bottom most pixels
+			for y := 1; y <= workerHeights[i]; y++ {           // remainding values
+				newWorld[y] = world[i*workerHeights[i]+y-1]
+			}
+			workerWorlds = append(workerWorlds, workerWorld{data: newWorld})
+		} else {
+			newWorld[0] = world[currHeight-workerHeights[i]-1] // top most pixels
+			newWorld[len(newWorld)-1] = world[currHeight]      // bottom most pixels
+			for y := 1; y <= workerHeights[i]; y++ {           // remainding values
+				newWorld[y] = world[i*workerHeights[i]+y-1]
+			}
+			workerWorlds = append(workerWorlds, workerWorld{data: newWorld})
+		}
+	}
+	return workerWorlds
+}
+
+/* worker : Takes in part of a world, calculates next step and sends results down a channel for re-assembly */
+func worker(p Params, workerWorld [][]byte, c chan<- [][]byte) {
+	workerWorldHeight := len(workerWorld)
+	newWorld := workerWorld[1:(workerWorldHeight - 1)] // without padding that was added in worker world
+	for turn := 0; turn < p.Turns; turn++ {
+		newWorld = calculateNextState(p, workerWorld)[1:(workerWorldHeight - 1)] // remove extra padded rows
+	}
+	c <- newWorld
+}
+
+/* makeImmutableWorld : Takes a world and returns an immutable version of it */
 func makeImmutableWorld(world [][]byte) func(y, x int) uint8 {
 	return func(y, x int) uint8 {
 		return world[y][x]
@@ -153,22 +175,10 @@ func makeImmutableWorld(world [][]byte) func(y, x int) uint8 {
 /* distributor : Divides the work between workers and interacts with other goroutines. */
 func distributor(p Params, c distributorChannels) {
 
-	/* 	Explanatory comment
-	*
-	* We start with sending the ioInput command (which is an enum with a specific int value) down the command channel.
-	* startIO (in gol.go line 34) will start the IO goroutine, in which a never-ending for loop is running,
-	* this loop is used in conjunction with a select statement (in io.go line 124 - 143), which means whenever a command is
-	* sent down the ioCommand channel, this select statement will pick up that command and go into one of the three cases.
-	*
-	* In the case of ioInput, the readPgmImage() function inside io.go will be waiting for a filename, that's why
-	* we send the filename down the ioFilename channel, and the filename channel in the distributor is send only.
-	*
-	 */
-
+	// Request input from and send filename to IO
 	c.ioCommand <- ioInput
 	c.ioFilename <- fmt.Sprintf("%vx%v", p.ImageHeight, p.ImageWidth)
 
-	// TODO: Create a 2D slice to store the world.
 	// TODO: For all initially alive cells send a CellFlipped Event.
 	world := makeWorld(p.ImageHeight, p.ImageWidth)
 
@@ -179,54 +189,39 @@ func distributor(p Params, c distributorChannels) {
 		}
 	}
 
+	// Create channels to send out results of image parts processed by each worker
+	out := make([]chan [][]byte, p.Threads)
+	for i := range out {
+		out[i] = make(chan [][]byte)
+	}
+
 	// TODO: Execute all turns of the Game of Life.
 	// TODO: Send correct Events when required, e.g. CellFlipped, TurnComplete and FinalTurnComplete.
 	//		 See event.go for a list of all events.
-	turn := 0
-	for turn < p.Turns {
-		// immutableWorld := makeImmutableWorld(world) – TODO: see if we can make use of immutable data structures instead
-
-		// Create channels to send out processed image parts
-		out := make([]chan [][]byte, p.Threads)
-		for i := range out {
-			out[i] = make(chan [][]byte)
+	if p.Threads == 1 { // if there's only one thread evolve game normally
+		for turn := 0; turn < p.Turns; turn++ {
+			world = calculateNextState(p, world)
+		}
+	} else { // else split image up and process each part with an individual worker
+		workerWorlds := makeWorkerWorlds(p, world)
+		for i, workerWorld := range workerWorlds {
+			go worker(p, workerWorld.data, out[i])
 		}
 
-		// Divide the image height into multiple parts, as image sizes and number of threads are integer values, the division will be floored.
-		// Therefore, if the number of threads doesn't evenly divide the image height, we need to have one worker working on a different image
-		// height to account for the flooring, this height will be +1 in size relative to the other parts.
-		workerHeight := p.ImageHeight / p.Threads
-		if p.ImageHeight%p.Threads != 0 {
-			workerHeightPadded := p.ImageHeight/p.Threads + 1
-			finalRowNum := p.Threads - 1
-			for i := 0; i < p.Threads-1; i++ {
-				go worker(i*workerHeight, 0, (i+1)*workerHeight, p.ImageWidth, world, out[i])
-			}
-			go worker(finalRowNum*workerHeightPadded, 0, (finalRowNum+1)*workerHeightPadded, p.ImageWidth, world, out[finalRowNum])
-		}
-
-		// TODO: Let each worker run on their individual part
-		for i := 0; i < p.Threads; i++ {
-			go worker(i*workerHeight, 0, (i+1)*workerHeight, p.ImageWidth, world, out[i])
-		}
-
-		// TODO: Assemble world again
+		// Assemble world again
 		newWorld := makeWorld(0, 0)
 		for i := 0; i < p.Threads; i++ {
 			part := <-out[i]
 			newWorld = append(newWorld, part...)
 		}
-
-		fmt.Println(len(world))
-		fmt.Println(len(newWorld))
 		world = newWorld
+	}
 
-		/*startY := 0
-		startX := 0
-		endY := len(world)
-		endX := len(world[0])
-		world = calculateNextState(startY, startX, endY, endX, world)*/
-
+	// TODO: remove this and come up with another way of getting the value of turns from each worker back, as the turns loop
+	// 		 is now running inside each individual worker
+	turn := 0
+	for turn < p.Turns {
+		// immutableWorld := makeImmutableWorld(world) – TODO: see if we can make use of immutable data structures instead
 		turn++
 	}
 	aliveCells := calculateAliveCells(p, world)
