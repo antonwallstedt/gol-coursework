@@ -2,6 +2,8 @@ package gol
 
 import (
 	"fmt"
+	"sync"
+	"time"
 
 	"uk.ac.bris.cs/gameoflife/util"
 )
@@ -133,7 +135,8 @@ func worker(p Params, workerChan chan byte, imageHeight int, imageWidth int, out
 // distributor divides the work between workers and interacts with other goroutines.
 func distributor(p Params, c distributorChannels, keyPresses <-chan rune) {
 	var FinalTurnComplete FinalTurnComplete
-	// var AliveCellsCount AliveCellsCount
+	var mutex sync.Mutex
+
 	c.ioCommand <- ioInput
 	c.ioFileName <- fmt.Sprintf("%vx%v", p.ImageHeight, p.ImageWidth)
 
@@ -161,46 +164,30 @@ func distributor(p Params, c distributorChannels, keyPresses <-chan rune) {
 	turn := 0
 
 	for turn < p.Turns {
+		ticker := time.NewTicker(2 * time.Second)
+		done := make(chan bool)
+		go func() {
+			select {
 
-		// clock := time.NewTicker(2 * time.Second)
-		// select {
-		// // case <-ticker.C:
-		// case k := <-keyPresses:
-		// 	if k == 's' {
-		// 		printBoard(c, p, world, turn)
-		// 	} else if k == 'q' {
-		// 		printBoard(c, p, world, turn)
-		// 		fmt.Println("Terminated.")
-		// 		return
-		// 	} else if k == 'p' {
-		// 		fmt.Println(turn)
-		// 		fmt.Println("Pausing.")
-		// 		for {
-		// 			tempKey := <-keyPresses
-		// 			if tempKey == 'p' {
-		// 				fmt.Println("Continuing.")
-		// 				break
-		// 			}
-		// 		}
-		// 	}
-		// case <-clock.C:
-		// 	var aliveCell = 0
-		// 	for y := 0; y < p.ImageHeight; y++ {
-		// 		for x := 0; x < p.ImageWidth; x++ {
-		// 			if world[y][x] == 255 {
-		// 				aliveCell += 1
-		// 				AliveCellsCount.CellsCount = aliveCell
-		// 				AliveCellsCount.CompletedTurns = turn
-		// 				c.events <- AliveCellsCount
+			case <-ticker.C:
+				var aliveCell int
+				for y := 0; y < p.ImageHeight; y++ {
+					for x := 0; x < p.ImageWidth; x++ {
+						if world[y][x] == ALIVE {
+							aliveCell++
+						}
+					}
+				}
+				mutex.Lock()
+				c.events <- AliveCellsCount{turn, aliveCell}
+				mutex.Unlock()
 
-		// 			}
-		// 		}
-		// 	}
+			case <-done:
+				return
+			}
 
-		// 	fmt.Println("number of alive cells is:", aliveCell)
+		}()
 
-		// default:
-		// }
 		var workerHeight int
 		outChan := make([]chan byte, p.Threads)
 		workerHeight = p.ImageHeight / p.Threads
@@ -234,6 +221,7 @@ func distributor(p Params, c distributorChannels, keyPresses <-chan rune) {
 				for y := 0; y < workerHeight; y++ {
 					for x := 0; x < p.ImageWidth; x++ {
 						newWorld[i*workerHeight+y][x] = <-outChan[i]
+
 					}
 				}
 			}
@@ -244,8 +232,15 @@ func distributor(p Params, c distributorChannels, keyPresses <-chan rune) {
 		newWorld = x
 		turn++
 	}
+	//Do an ioCommand output to output the pgm file.
+
+	c.ioCommand <- ioOutput
+	c.ioFileName <- fmt.Sprintf("%vx%vx%v", p.ImageHeight, p.ImageWidth, p.Turns)
+
 	for y := 0; y < p.ImageHeight; y++ {
 		for x := 0; x < p.ImageWidth; x++ {
+			//Give each byte of world to writePGM file
+			c.ioOutput <- world[y][x]
 			if world[y][x] == ALIVE {
 				listCell = append(listCell, util.Cell{Y: y, X: x})
 			}
@@ -264,7 +259,10 @@ func distributor(p Params, c distributorChannels, keyPresses <-chan rune) {
 	c.events <- FinalTurnComplete
 	c.events <- StateChange{turn, Quitting}
 	// Close the channel to stop the SDL goroutine gracefully. Removing may cause deadlock.
+	mutex.Lock()
 	close(c.events)
+	mutex.Lock()
+
 }
 func printBoard(d distributorChannels, p Params, world [][]byte, turn int) {
 
