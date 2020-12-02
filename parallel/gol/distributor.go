@@ -2,7 +2,6 @@ package gol
 
 import (
 	"fmt"
-	"time"
 
 	"uk.ac.bris.cs/gameoflife/util"
 )
@@ -33,32 +32,24 @@ func buildWorkerWorld(world [][]byte, workerHeight, imageHeight, imageWidth, cur
 	for j := range workerWorld {
 		workerWorld[j] = make([]byte, imageWidth)
 	}
-	//This will work when the world divide into worker world with the real integer and have mod 0
 
-	for x := 0; x < imageWidth; x++ {
-		workerWorld[0][x] = world[(currentThreads*workerHeight+imageHeight-1)%imageHeight][x]
-	}
-	//Check the last worker world to add remaining byte
 	if currentThreads == Threads-1 {
-		modOfWorkerHeight := imageHeight / Threads
-		// lastWokerHeight := modOfWorkerHeight + workerHeight
-		var lastWokerHeight int
-		//This is for 16*16 file, we need to add the mod from dividing total height and add that thing to last worker world
-
-		lastWokerHeight = modOfWorkerHeight + workerHeight
-
-		for y := 1; y <= lastWokerHeight; y++ {
+		workerHeight1 := workerHeight - imageHeight%Threads
+		for x := 0; x < imageWidth; x++ {
+			workerWorld[0][x] = world[(currentThreads*workerHeight1+imageHeight-1)%imageHeight][x]
+		}
+		for y := 1; y <= workerHeight; y++ {
 			for x := 0; x < imageWidth; x++ {
-				workerWorld[y][x] = world[currentThreads*workerHeight+y-1][x]
+				workerWorld[y][x] = world[currentThreads*workerHeight1+y-1][x]
 			}
 		}
 		for x := 0; x < imageWidth; x++ {
-			workerWorld[lastWokerHeight+1][x] = world[((currentThreads+1)*workerHeight+imageHeight)%imageHeight][x]
+			workerWorld[workerHeight+1][x] = world[0][x]
 		}
-		//I try to debug when the input file is 64*64, we need to add another byte to the last wokeWorld in order to get all the element in the world
-
 	} else {
-
+		for x := 0; x < imageWidth; x++ {
+			workerWorld[0][x] = world[(currentThreads*workerHeight+imageHeight-1)%imageHeight][x]
+		}
 		for y := 1; y <= workerHeight; y++ {
 			for x := 0; x < imageWidth; x++ {
 				workerWorld[y][x] = world[currentThreads*workerHeight+y-1][x]
@@ -74,38 +65,27 @@ func buildWorkerWorld(world [][]byte, workerHeight, imageHeight, imageWidth, cur
 }
 
 // Function to find out a alive neighbor of the cell
-func aliveNeighbour(p Params, y, x int, world [][]byte) int {
+func mod(x, m int) int {
+	return (x + m) % m
+}
 
-	var a int
-	var b int
-
-	prevX := x - 1
-	aftX := x + 1
-	prevY := y - 1
-	aftY := y + 1
-	if x == 0 {
-		prevX = p.ImageWidth - 1
+func calculateNeighbours(p Params, x, y int, world [][]byte) int {
+	neighbours := 0
+	for i := -1; i <= 1; i++ {
+		for j := -1; j <= 1; j++ {
+			if i != 0 || j != 0 {
+				if world[mod(y+i, p.ImageHeight)][mod(x+j, p.ImageWidth)] == ALIVE {
+					neighbours++
+				}
+			}
+		}
 	}
-	if x == p.ImageWidth-1 {
-		aftX = 0
-	}
-	if y == 0 {
-		prevY = p.ImageHeight - 1
-	}
-	if y == p.ImageHeight-1 {
-		aftY = 0
-	}
-
-	b = int(world[y][prevX]) + int(world[y][aftX]) + int(world[prevY][prevX]) + int(world[prevY][x]) + int(world[prevY][aftX]) + int(world[aftY][aftX]) + int(world[aftY][prevX]) + int(world[aftY][x])
-
-	a = b / 255
-
-	return a
+	return neighbours
 }
 
 //Worker is the functino that used to calculate the logic of the program and giving each byte of newWorld to distributor for finalComplete turn channel.
-func worker(p Params, workerChan chan byte, imageHeight int, pImageHeight, imageWidth int, outChan chan byte, Thread, currentThread int) {
-	// Create a world for worker to store the workerWorld, the reason why we plus two beacause we need to make sure that the we create the world to have same exact height as workerWorld height
+func worker(p Params, workerChan chan byte, imageHeight int, imageWidth int, outChan chan byte, Thread, currentThread int) {
+
 	world := make([][]byte, imageHeight+2)
 	for i := range world {
 		world[i] = make([]byte, imageWidth)
@@ -120,12 +100,11 @@ func worker(p Params, workerChan chan byte, imageHeight int, pImageHeight, image
 	for i := range world {
 		newWorld[i] = make([]byte, imageWidth)
 	}
-	//we start from 1 because we dont wannt to check the first element
+	//we don't need to care about the first row, cause we need to ignore every first role.
 	for y := 1; y <= imageHeight; y++ {
 		for x := 0; x < imageWidth; x++ {
 			var neighboursAlive = 0
-
-			neighboursAlive = aliveNeighbour(p, y, x, world)
+			neighboursAlive = calculateNeighbours(p, x, y, world)
 			if world[y][x] == ALIVE {
 				if neighboursAlive == 2 || neighboursAlive == 3 {
 					newWorld[y][x] = ALIVE
@@ -142,7 +121,7 @@ func worker(p Params, workerChan chan byte, imageHeight int, pImageHeight, image
 			}
 		}
 	}
-	// This one we dont want to send out the first element of the world.
+	//Here is where we ignore the first and the last row.
 	for y := 0; y < imageHeight; y++ {
 		for x := 0; x < imageWidth; x++ {
 			outChan <- newWorld[y+1][x]
@@ -154,7 +133,7 @@ func worker(p Params, workerChan chan byte, imageHeight int, pImageHeight, image
 // distributor divides the work between workers and interacts with other goroutines.
 func distributor(p Params, c distributorChannels, keyPresses <-chan rune) {
 	var FinalTurnComplete FinalTurnComplete
-
+	// var AliveCellsCount AliveCellsCount
 	c.ioCommand <- ioInput
 	c.ioFileName <- fmt.Sprintf("%vx%v", p.ImageHeight, p.ImageWidth)
 
@@ -182,46 +161,46 @@ func distributor(p Params, c distributorChannels, keyPresses <-chan rune) {
 	turn := 0
 
 	for turn < p.Turns {
-		// Tiker for the 3rd steps
-		ticker := time.NewTicker(2 * time.Second)
-		select {
-		// case <-ticker.C:
-		// check the keyperess
-		case k := <-keyPresses:
-			if k == 's' {
-				//s to start the board
-				printBoard(c, p, world, turn)
-			} else if k == 'q' {
-				//q to quit the board
-				printBoard(c, p, world, turn)
-				fmt.Println("Terminated.")
-				return
-			} else if k == 'p' {
-				//pausing the board
-				fmt.Println(turn)
-				fmt.Println("Pausing.")
-				for {
-					tempKey := <-keyPresses
-					if tempKey == 'p' {
-						fmt.Println("Continuing.")
-						break
-					}
-				}
-			}
-		case <-ticker.C:
-			var instanceAlive = 0
-			for y := 0; y < p.ImageHeight; y++ {
-				for x := 0; x < p.ImageWidth; x++ {
-					if world[y][x] == 255 {
-						instanceAlive += 1
-					}
-				}
-			}
 
-			fmt.Println("number of alive cells is:", instanceAlive)
+		// clock := time.NewTicker(2 * time.Second)
+		// select {
+		// // case <-ticker.C:
+		// case k := <-keyPresses:
+		// 	if k == 's' {
+		// 		printBoard(c, p, world, turn)
+		// 	} else if k == 'q' {
+		// 		printBoard(c, p, world, turn)
+		// 		fmt.Println("Terminated.")
+		// 		return
+		// 	} else if k == 'p' {
+		// 		fmt.Println(turn)
+		// 		fmt.Println("Pausing.")
+		// 		for {
+		// 			tempKey := <-keyPresses
+		// 			if tempKey == 'p' {
+		// 				fmt.Println("Continuing.")
+		// 				break
+		// 			}
+		// 		}
+		// 	}
+		// case <-clock.C:
+		// 	var aliveCell = 0
+		// 	for y := 0; y < p.ImageHeight; y++ {
+		// 		for x := 0; x < p.ImageWidth; x++ {
+		// 			if world[y][x] == 255 {
+		// 				aliveCell += 1
+		// 				AliveCellsCount.CellsCount = aliveCell
+		// 				AliveCellsCount.CompletedTurns = turn
+		// 				c.events <- AliveCellsCount
 
-		default:
-		}
+		// 			}
+		// 		}
+		// 	}
+
+		// 	fmt.Println("number of alive cells is:", aliveCell)
+
+		// default:
+		// }
 		var workerHeight int
 		outChan := make([]chan byte, p.Threads)
 		workerHeight = p.ImageHeight / p.Threads
@@ -229,62 +208,46 @@ func distributor(p Params, c distributorChannels, keyPresses <-chan rune) {
 		for i := 0; i < p.Threads; i++ {
 			outChan[i] = make(chan byte)
 			workerChan := make(chan byte)
-			workerWorld := buildWorkerWorld(world, workerHeight, p.ImageHeight, p.ImageWidth, i, p.Threads)
-			go worker(p, workerChan, workerHeight+2, p.ImageHeight, p.ImageWidth, outChan[i], p.Threads, i)
-			//Send world cells to workers
-			// if i == p.Threads {
-			// 	for y := 0; y < workerHeight+modOfWorkerHeight+2; y++ {
-			// 		for x := 0; x < p.ImageWidth; x++ {
-			// 			workerChan <- workerWorld[y][x]
-			// 		}
-			// 	}
-			// } else {
-			for y := 0; y < workerHeight+2; y++ {
-				for x := 0; x < p.ImageWidth; x++ {
-					workerChan <- workerWorld[y][x]
-				}
-			}
 
+			if i == p.Threads-1 {
+				workerHeight1 := (p.ImageHeight / p.Threads) + (p.ImageHeight % p.Threads)
+				workerWorld := buildWorkerWorld(world, workerHeight1, p.ImageHeight, p.ImageWidth, i, p.Threads)
+				go worker(p, workerChan, workerHeight1, p.ImageWidth, outChan[i], p.Threads, i)
+				for y := 0; y < workerHeight1+2; y++ {
+					for x := 0; x < p.ImageWidth; x++ {
+						workerChan <- workerWorld[y][x]
+					}
+				}
+				for y := 0; y < workerHeight1; y++ {
+					for x := 0; x < p.ImageWidth; x++ {
+						newWorld[i*workerHeight+y][x] = <-outChan[i]
+					}
+				}
+			} else {
+				workerWorld := buildWorkerWorld(world, workerHeight, p.ImageHeight, p.ImageWidth, i, p.Threads)
+				go worker(p, workerChan, workerHeight, p.ImageWidth, outChan[i], p.Threads, i)
+				for y := 0; y < workerHeight+2; y++ {
+					for x := 0; x < p.ImageWidth; x++ {
+						workerChan <- workerWorld[y][x]
+					}
+				}
+				for y := 0; y < workerHeight; y++ {
+					for x := 0; x < p.ImageWidth; x++ {
+						newWorld[i*workerHeight+y][x] = <-outChan[i]
+					}
+				}
+			}
 		}
-		//Receieving the thread to world
-		for i := 0; i < p.Threads; i++ {
-			//slices from workers
-			// if i == p.Threads {
-			// 	tempOut := make([][]byte, workerHeight+modOfWorkerHeight)
-			// 	for i := range tempOut {
-			// 		tempOut[i] = make([]byte, p.ImageWidth)
-			// 	}
-			// 	for y := 0; y < workerHeight+modOfWorkerHeight; y++ {
-			// 		for x := 0; x < p.ImageWidth; x++ {
-			// 			world[i*workerHeight+modOfWorkerHeight+y][x] = tempOut[y][x]
-			// 		}
-			// 	}
 
-			// } else {
-			tempOut := make([][]byte, workerHeight)
-			for i := range tempOut {
-				tempOut[i] = make([]byte, p.ImageWidth)
-			}
-			//Recieving the byte to the temp world for the first thread
-			for y := 0; y < workerHeight; y++ {
-				for x := 0; x < p.ImageWidth; x++ {
-					tempOut[y][x] = <-outChan[i]
-				}
-			}
-			//String the temp world in to world
-			for y := 0; y < workerHeight; y++ {
-				for x := 0; x < p.ImageWidth; x++ {
-					world[i*workerHeight+y][x] = tempOut[y][x]
-				}
-			}
-			// }
-		}
+		x := world
+		world = newWorld
+		newWorld = x
 		turn++
 	}
 	for y := 0; y < p.ImageHeight; y++ {
 		for x := 0; x < p.ImageWidth; x++ {
 			if world[y][x] == ALIVE {
-				listCell = append(listCell, util.Cell{X: x, Y: y})
+				listCell = append(listCell, util.Cell{Y: y, X: x})
 			}
 		}
 	}
@@ -304,6 +267,8 @@ func distributor(p Params, c distributorChannels, keyPresses <-chan rune) {
 	close(c.events)
 }
 func printBoard(d distributorChannels, p Params, world [][]byte, turn int) {
+
 	d.ioCommand <- ioOutput
 	d.ioFileName <- fmt.Sprintf("%vx%v", p.ImageHeight, p.ImageWidth)
+
 }
