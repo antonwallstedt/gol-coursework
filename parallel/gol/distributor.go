@@ -39,7 +39,7 @@ func buildWorkerWorld(world [][]byte, workerHeight, imageHeight, imageWidth, cur
 		workerWorld[0][x] = world[(currentThreads*workerHeight+imageHeight-1)%imageHeight][x]
 	}
 	//Check the last worker world to add remaining byte
-	if currentThreads == Threads {
+	if currentThreads == Threads-1 {
 		modOfWorkerHeight := imageHeight / Threads
 		// lastWokerHeight := modOfWorkerHeight + workerHeight
 		var lastWokerHeight int
@@ -110,7 +110,7 @@ func worker(p Params, workerChan chan byte, imageHeight int, pImageHeight, image
 	for i := range world {
 		world[i] = make([]byte, imageWidth)
 	}
-	for y := 0; y < imageHeight; y++ {
+	for y := 0; y < imageHeight+2; y++ {
 		for x := 0; x < imageWidth; x++ {
 			world[y][x] = <-workerChan
 		}
@@ -304,7 +304,6 @@ func distributor(p Params, c distributorChannels, keyPresses <-chan rune) {
 	close(c.events)
 }
 func printBoard(d distributorChannels, p Params, world [][]byte, turn int) {
-
 	d.ioCommand <- ioOutput
 	d.ioFileName <- fmt.Sprintf("%vx%v", p.ImageHeight, p.ImageWidth)
 }
