@@ -18,6 +18,10 @@ type distributorChannels struct {
 	ioOutput   chan<- uint8
 }
 
+type workerWorld struct {
+	data [][]byte
+}
+
 /* mod : Calculates the remainder of a given number x when divided by m.
 Doesn't allow negative numbers so m is added to x before computing mod. */
 func mod(x, m int) int {
@@ -91,13 +95,24 @@ func makeWorld(height, width int) [][]byte {
 	return world
 }
 
-func worker(p Params, workerHeight int, toprowChan, bottomrowChan chan []byte, dataChannel chan []byte) {
-
-	// Create worker world and load in data through data channel
-	workerWorld := makeWorld(workerHeight+2, p.ImageWidth)
-	for y := 1; y < workerHeight; y++ {
-		workerWorld[y] = <-dataChannel
+func makeWorkerWorlds(p Params, world [][]byte, workerHeights []int) []workerWorld {
+	workerWorlds := []workerWorld{}
+	for _, workerHeight := range workerHeights {
+		tempWorld := makeWorld(workerHeight+2, p.ImageWidth)
+		workerWorlds = append(workerWorlds, workerWorld{data: tempWorld})
 	}
+
+	for i := 0; i < p.Threads; i++ {
+		if i != p.Threads-1 {
+			workerWorlds[i].data = world[(i * workerHeights[i]):((i + 1) * workerHeights[i])]
+		} else {
+			workerWorlds[i].data = world[(i * workerHeights[0]):p.ImageHeight]
+		}
+	}
+	return workerWorlds
+}
+
+func worker(p Params, workerHeight int, toprowChan, bottomrowChan chan []byte, workerWorld [][]byte, out chan<- [][]byte) {
 
 	for turn := 0; turn < p.Turns; turn++ {
 		// Send off the top row and bottom row pixels to another worker
@@ -111,10 +126,8 @@ func worker(p Params, workerHeight int, toprowChan, bottomrowChan chan []byte, d
 		workerWorld = calculateNextState(p, workerWorld)
 	}
 
-	newWorld := workerWorld[1:(workerHeight - 1)]
-	for y := range newWorld {
-		dataChannel <- newWorld[y]
-	}
+	newWorldPart := workerWorld[1:(workerHeight - 1)]
+	out <- newWorldPart
 
 }
 
@@ -138,14 +151,6 @@ func distributor(p Params, c distributorChannels) {
 	// TODO: Execute all turns of the Game of Life.
 	// TODO: Send correct Events when required, e.g. CellFlipped, TurnComplete and FinalTurnComplete.
 	//		 See event.go for a list of all events.
-	dataChannels := make([]chan []byte, p.Threads)
-	haloChannels := make([]chan []byte, p.Threads)
-
-	for i := range dataChannels {
-		dataChannels[i] = make(chan []byte)
-		haloChannels[i] = make(chan []byte)
-	}
-
 	defaultHeight := p.ImageHeight / p.Threads
 	workerHeights := make([]int, p.Threads)
 	for i := range workerHeights {
@@ -154,8 +159,43 @@ func distributor(p Params, c distributorChannels) {
 
 	remainder := p.ImageHeight % p.Threads
 	if remainder != 0 {
-		workerHeights[len(workerHeights)] += remainder
+		workerHeights[len(workerHeights)-1] += remainder
 	}
+
+	haloChannels := make([]chan []byte, p.Threads)
+	out := make([]chan [][]byte, p.Threads)
+
+	for i := 0; i < p.Threads; i++ {
+		haloChannels[i] = make(chan []byte)
+		out[i] = make(chan [][]byte)
+	}
+
+	workerWorlds := makeWorkerWorlds(p, world, workerHeights)
+
+	for i := 0; i < p.Threads; i++ {
+		go worker(p, workerHeights[i], haloChannels[(i-1+p.Threads)%p.Threads], haloChannels[i], workerWorlds[i].data, out[i])
+	}
+
+	// Receive data from workers
+	/*newWorld := makeWorld(p.ImageHeight, p.ImageWidth)
+	for i, channel := range dataChannels {
+		if i != p.Threads-1 {
+			for y := i * workerHeights[i]; y < (i+1)*workerHeights[i]; y++ {
+				newWorld[y] = <-channel
+			}
+		} else {
+			for y := i * workerHeights[0]; y < p.ImageHeight; y++ {
+				newWorld[y] = <-channel
+			}
+		}
+	}*/
+
+	newWorld := makeWorld(p.ImageHeight, p.ImageWidth)
+	for i := 0; i < p.Threads; i++ {
+		part := <-out[i]
+		newWorld = append(newWorld, part...)
+	}
+	world = newWorld
 
 	// TODO: remove this and come up with another way of getting the value of turns from each worker back, as the turns loop
 	// 		 is now running inside each individual worker
@@ -163,7 +203,9 @@ func distributor(p Params, c distributorChannels) {
 	for turn < p.Turns {
 		turn++
 	}
+
 	aliveCells := calculateAliveCells(p, world)
+
 	c.events <- FinalTurnComplete{CompletedTurns: turn, Alive: aliveCells}
 
 	// Make sure that the IO has finished any output before exiting.
