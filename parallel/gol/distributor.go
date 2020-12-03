@@ -111,6 +111,9 @@ func worker(p Params, workerHeight int, topRowChan, bottomRowChan chan []byte, i
 		worldPart = calculateNextState(p, worldPart)
 	}
 
+	newWorldPart = worldPart[1:(workerHeight - 1)]
+	out <- newWorldPart
+
 }
 
 /* distributor : Divides the work between workers and interacts with other goroutines. */
@@ -128,6 +131,28 @@ func distributor(p Params, c distributorChannels) {
 		for x := range world {
 			world[y][x] = <-c.ioInput
 		}
+	}
+
+	// Calculate heights
+	defaultHeight := p.ImageHeight / p.Threads
+	workerHeights := make([]int, p.Threads)
+	for i := range workerHeights {
+		workerHeights[i] = defaultHeight
+	}
+
+	remainder := p.ImageHeight % p.Threads
+	if remainder != 0 {
+		workerHeights[len(workerHeights)-1] += remainder
+	}
+
+	outChans := make([]chan [][]byte, p.Threads)
+	inChans := make([]chan []byte, p.Threads)
+	haloChans := make([]chan []byte, p.Threads)
+
+	for i := 0; i < p.Threads; i++ {
+		outChans[i] = make(chan [][]byte)
+		inChans[i] = make(chan []byte)
+		haloChans[i] = make(chan []byte)
 	}
 
 	// TODO: Execute all turns of the Game of Life.
