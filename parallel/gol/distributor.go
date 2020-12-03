@@ -86,7 +86,7 @@ func calculateNeighbours(p Params, x, y int, world [][]byte) int {
 }
 
 //Worker is the functino that used to calculate the logic of the program and giving each byte of newWorld to distributor for finalComplete turn channel.
-func worker(p Params, workerChan chan byte, imageHeight int, imageWidth int, outChan chan byte, Thread, currentThread int) {
+func worker(c distributorChannels, p Params, workerChan chan byte, imageHeight int, imageWidth int, outChan chan byte, Thread, currentThread, turn int) {
 
 	world := make([][]byte, imageHeight+2)
 	for i := range world {
@@ -106,16 +106,22 @@ func worker(p Params, workerChan chan byte, imageHeight int, imageWidth int, out
 	for y := 1; y <= imageHeight; y++ {
 		for x := 0; x < imageWidth; x++ {
 			var neighboursAlive = 0
+			var CellFlipped CellFlipped
 			neighboursAlive = calculateNeighbours(p, x, y, world)
 			if world[y][x] == ALIVE {
 				if neighboursAlive == 2 || neighboursAlive == 3 {
 					newWorld[y][x] = ALIVE
 				} else {
 					newWorld[y][x] = DEAD
+					CellFlipped.Cell = util.Cell{X: x, Y: y}
+					c.events <- CellFlipped
+
 				}
 			} else {
 				if neighboursAlive == 3 {
 					newWorld[y][x] = ALIVE
+					CellFlipped.Cell = util.Cell{X: x, Y: y}
+					c.events <- CellFlipped
 				} else {
 					newWorld[y][x] = DEAD
 				}
@@ -134,8 +140,10 @@ func worker(p Params, workerChan chan byte, imageHeight int, imageWidth int, out
 
 // distributor divides the work between workers and interacts with other goroutines.
 func distributor(p Params, c distributorChannels, keyPresses <-chan rune) {
+	var CellFlipped CellFlipped
 	var FinalTurnComplete FinalTurnComplete
 	var mutex sync.Mutex
+	var TurnComplete TurnComplete
 
 	c.ioCommand <- ioInput
 	c.ioFileName <- fmt.Sprintf("%vx%v", p.ImageHeight, p.ImageWidth)
@@ -157,18 +165,51 @@ func distributor(p Params, c distributorChannels, keyPresses <-chan rune) {
 		for x := 0; x < p.ImageWidth; x++ {
 			input := <-c.ioInput
 			world[y][x] = input
+		}
+	}
+	for y := 0; y < p.ImageHeight; y++ {
+		for x := 0; x < p.ImageWidth; x++ {
+			if world[y][x] == ALIVE {
+				CellFlipped.Cell = util.Cell{X: x, Y: y}
+				c.events <- CellFlipped
 
+			}
 		}
 	}
 
 	turn := 0
 
 	for turn < p.Turns {
+		select {
+		case k := <-keyPresses:
+			switch k {
+			case 's':
+				printBoard(c, p, world, turn)
+				fmt.Println("Start")
+			case 'q':
+				// printBoard(c, p, world, turn)
+				fmt.Println("Terminated.")
+				return
+			case 'p':
+				fmt.Println(turn)
+				fmt.Println("Pausing.")
+				for {
+					tempKey := <-keyPresses
+					if tempKey == 'p' {
+						fmt.Println("Continuing.")
+						break
+					}
+				}
+
+			}
+		default:
+
+		}
+
 		ticker := time.NewTicker(2 * time.Second)
 		done := make(chan bool)
 		go func() {
 			select {
-
 			case <-ticker.C:
 				var aliveCell int
 				for y := 0; y < p.ImageHeight; y++ {
@@ -184,6 +225,7 @@ func distributor(p Params, c distributorChannels, keyPresses <-chan rune) {
 
 			case <-done:
 				return
+
 			}
 
 		}()
@@ -199,7 +241,7 @@ func distributor(p Params, c distributorChannels, keyPresses <-chan rune) {
 			if i == p.Threads-1 {
 				workerHeight1 := (p.ImageHeight / p.Threads) + (p.ImageHeight % p.Threads)
 				workerWorld := buildWorkerWorld(world, workerHeight1, p.ImageHeight, p.ImageWidth, i, p.Threads)
-				go worker(p, workerChan, workerHeight1, p.ImageWidth, outChan[i], p.Threads, i)
+				go worker(c, p, workerChan, workerHeight1, p.ImageWidth, outChan[i], p.Threads, i, turn)
 				for y := 0; y < workerHeight1+2; y++ {
 					for x := 0; x < p.ImageWidth; x++ {
 						workerChan <- workerWorld[y][x]
@@ -212,7 +254,7 @@ func distributor(p Params, c distributorChannels, keyPresses <-chan rune) {
 				}
 			} else {
 				workerWorld := buildWorkerWorld(world, workerHeight, p.ImageHeight, p.ImageWidth, i, p.Threads)
-				go worker(p, workerChan, workerHeight, p.ImageWidth, outChan[i], p.Threads, i)
+				go worker(c, p, workerChan, workerHeight, p.ImageWidth, outChan[i], p.Threads, i, turn)
 				for y := 0; y < workerHeight+2; y++ {
 					for x := 0; x < p.ImageWidth; x++ {
 						workerChan <- workerWorld[y][x]
@@ -233,6 +275,8 @@ func distributor(p Params, c distributorChannels, keyPresses <-chan rune) {
 		turn++
 	}
 	//Do an ioCommand output to output the pgm file.
+	TurnComplete.CompletedTurns = p.Turns
+	c.events <- TurnComplete
 
 	c.ioCommand <- ioOutput
 	c.ioFileName <- fmt.Sprintf("%vx%vx%v", p.ImageHeight, p.ImageWidth, p.Turns)
@@ -264,9 +308,17 @@ func distributor(p Params, c distributorChannels, keyPresses <-chan rune) {
 	mutex.Lock()
 
 }
+
 func printBoard(d distributorChannels, p Params, world [][]byte, turn int) {
 
 	d.ioCommand <- ioOutput
 	d.ioFileName <- fmt.Sprintf("%vx%v", p.ImageHeight, p.ImageWidth)
+	for y := 0; y < p.ImageHeight; y++ {
+		for x := 0; x < p.ImageWidth; x++ {
+			d.ioOutput <- world[y][x]
+		}
+	}
+	d.ioCommand <- ioCheckIdle
+	<-d.ioIdle
 
 }
