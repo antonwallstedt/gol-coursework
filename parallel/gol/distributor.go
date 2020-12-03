@@ -268,15 +268,14 @@ func distributor(p Params, c distributorChannels, keyPresses <-chan rune) {
 				}
 			}
 		}
-
+		//Do an ioCommand output to output the pgm file.
+		TurnComplete.CompletedTurns = p.Turns
+		c.events <- TurnComplete
 		x := world
 		world = newWorld
 		newWorld = x
 		turn++
 	}
-	//Do an ioCommand output to output the pgm file.
-	TurnComplete.CompletedTurns = p.Turns
-	c.events <- TurnComplete
 
 	c.ioCommand <- ioOutput
 	c.ioFileName <- fmt.Sprintf("%vx%vx%v", p.ImageHeight, p.ImageWidth, p.Turns)
