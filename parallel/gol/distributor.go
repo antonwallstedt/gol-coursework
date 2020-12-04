@@ -2,7 +2,6 @@ package gol
 
 import (
 	"fmt"
-	"sync"
 
 	"uk.ac.bris.cs/gameoflife/util"
 )
@@ -79,7 +78,6 @@ func calculateAliveCells(p Params, world [][]byte) []util.Cell {
 	aliveCells := []util.Cell{}
 	for y := 0; y < p.ImageHeight; y++ {
 		for x := 0; x < p.ImageWidth; x++ {
-			fmt.Print(world[y][x], " ")
 			if world[y][x] == ALIVE {
 				aliveCells = append(aliveCells, util.Cell{X: x, Y: y})
 			}
@@ -97,10 +95,14 @@ func makeWorld(height, width int) [][]byte {
 	return world
 }
 
-func worker(p Params, workerHeight int, topRowChan, bottomRowChan chan []byte, in <-chan []byte, out chan<- [][]byte, wg *sync.WaitGroup) {
+/* printWorld : TEMPORARY DEBUG FUNCTION, REMOVE ME */
+func printWorld(world [][]byte) {
+	for _, row := range world {
+		fmt.Println(row)
+	}
+}
 
-	defer wg.Done()
-
+func worker(id int, p Params, workerHeight int, topRowChan, bottomRowChan chan []byte, in <-chan []byte, out chan<- [][]byte) {
 	worldPart := makeWorld(workerHeight+2, p.ImageWidth)
 	newWorldPart := makeWorld(workerHeight, p.ImageWidth)
 	for y := 1; y <= workerHeight; y++ {
@@ -115,7 +117,10 @@ func worker(p Params, workerHeight int, topRowChan, bottomRowChan chan []byte, i
 		worldPart = calculateNextState(p, worldPart)
 	}
 
-	newWorldPart = worldPart[1:(workerHeight - 1)]
+	for y := 1; y <= workerHeight; y++ {
+		newWorldPart[y-1] = worldPart[y]
+	}
+
 	out <- newWorldPart
 
 }
@@ -157,17 +162,13 @@ func distributor(p Params, c distributorChannels) {
 	for i := 0; i < p.Threads; i++ {
 		outChans[i] = make(chan [][]byte)
 		inChans[i] = make(chan []byte)
-		haloChans[i] = make(chan []byte)
+		haloChans[i] = make(chan []byte, p.Threads)
 	}
 
 	// Start workers
-	var wg sync.WaitGroup
 	for i := 0; i < p.Threads; i++ {
-		wg.Add(1)
-		go worker(p, workerHeights[i], haloChans[(i-1+p.Threads)%p.Threads], haloChans[i], inChans[i], outChans[i], &wg)
+		go worker(i, p, workerHeights[i], haloChans[(i-1+p.Threads)%p.Threads], haloChans[i], inChans[i], outChans[i])
 	}
-
-	fmt.Println("I'm here now")
 
 	// Send data to workers
 	for i := range inChans {
@@ -182,16 +183,17 @@ func distributor(p Params, c distributorChannels) {
 		}
 	}
 
-	fmt.Println(&wg)
-	wg.Wait()
-
 	// Receive data from workers
-	newWorld := makeWorld(p.ImageHeight, p.ImageWidth)
+	newWorld := makeWorld(0, 0)
 	for i := range outChans {
 		worldPart := <-outChans[i]
 		newWorld = append(newWorld, worldPart...)
 	}
-	fmt.Println(calculateAliveCells(p, newWorld))
+
+	// Update world
+	x := world
+	world = newWorld
+	newWorld = x
 
 	// TODO: Execute all turns of the Game of Life.
 	// TODO: Send correct Events when required, e.g. CellFlipped, TurnComplete and FinalTurnComplete.
