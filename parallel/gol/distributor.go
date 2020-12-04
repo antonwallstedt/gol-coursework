@@ -138,6 +138,18 @@ func worker(c distributorChannels, p Params, workerChan chan byte, imageHeight i
 
 }
 
+func calculateAliveCells(p Params, world [][]byte) int {
+	aliveCells := 0
+	for y := 0; y < p.ImageHeight; y++ {
+		for x := 0; x < p.ImageWidth; x++ {
+			if world[y][x] == ALIVE {
+				aliveCells++
+			}
+		}
+	}
+	return aliveCells
+}
+
 // distributor divides the work between workers and interacts with other goroutines.
 func distributor(p Params, c distributorChannels, keyPresses <-chan rune) {
 	var CellFlipped CellFlipped
@@ -177,9 +189,26 @@ func distributor(p Params, c distributorChannels, keyPresses <-chan rune) {
 		}
 	}
 
-	turn := 0
+	tickerChan := make(chan bool)
+	go ticker(tickerChan)
 
+	aliveCellsChan := make(chan AliveCellsCount)
+	go aliveCellsWorker(aliveCellsChan, tickerChan, c.events)
+
+	turn := 0
 	for turn < p.Turns {
+		aliveCells := 0
+		for y := 0; y < p.ImageHeight; y++ {
+			for x := 0; x < p.ImageWidth; x++ {
+				if world[y][x] == ALIVE {
+					aliveCells++
+					CellFlipped.CompletedTurns = turn
+					CellFlipped.Cell = util.Cell{X: x, Y: y}
+					c.events <- CellFlipped
+				}
+			}
+		}
+
 		select {
 		case k := <-keyPresses:
 			switch k {
@@ -205,30 +234,6 @@ func distributor(p Params, c distributorChannels, keyPresses <-chan rune) {
 		default:
 
 		}
-
-		ticker := time.NewTicker(2 * time.Second)
-		done := make(chan bool)
-		go func() {
-			select {
-			case <-ticker.C:
-				var aliveCell int
-				for y := 0; y < p.ImageHeight; y++ {
-					for x := 0; x < p.ImageWidth; x++ {
-						if world[y][x] == ALIVE {
-							aliveCell++
-						}
-					}
-				}
-				mutex.Lock()
-				c.events <- AliveCellsCount{turn, aliveCell}
-				mutex.Unlock()
-
-			case <-done:
-				return
-
-			}
-
-		}()
 
 		var workerHeight int
 		outChan := make([]chan byte, p.Threads)
@@ -268,6 +273,10 @@ func distributor(p Params, c distributorChannels, keyPresses <-chan rune) {
 				}
 			}
 		}
+
+		aliveCells = calculateAliveCells(p, newWorld)
+		aliveCellsChan <- AliveCellsCount{CompletedTurns: turn, CellsCount: aliveCells}
+
 		//Do an ioCommand output to output the pgm file.
 		TurnComplete.CompletedTurns = p.Turns
 		c.events <- TurnComplete
@@ -306,6 +315,25 @@ func distributor(p Params, c distributorChannels, keyPresses <-chan rune) {
 	close(c.events)
 	mutex.Lock()
 
+}
+
+func ticker(tickChan chan bool) {
+	for {
+		time.Sleep(2 * time.Second)
+		tickChan <- true
+	}
+}
+
+func aliveCellsWorker(aliveCellsChan chan AliveCellsCount, tickerChan chan bool, event chan<- Event) {
+	aliveCells := AliveCellsCount{}
+	for {
+		fmt.Println("aliveCellsWorker running")
+		aliveCells = <-aliveCellsChan
+		select {
+		case <-tickerChan:
+			event <- AliveCellsCount{CompletedTurns: aliveCells.CompletedTurns, CellsCount: aliveCells.CellsCount}
+		}
+	}
 }
 
 func printBoard(d distributorChannels, p Params, world [][]byte, turn int) {
