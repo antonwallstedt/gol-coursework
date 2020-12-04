@@ -2,6 +2,7 @@ package gol
 
 import (
 	"fmt"
+	"sync"
 
 	"uk.ac.bris.cs/gameoflife/util"
 )
@@ -78,6 +79,7 @@ func calculateAliveCells(p Params, world [][]byte) []util.Cell {
 	aliveCells := []util.Cell{}
 	for y := 0; y < p.ImageHeight; y++ {
 		for x := 0; x < p.ImageWidth; x++ {
+			fmt.Print(world[y][x], " ")
 			if world[y][x] == ALIVE {
 				aliveCells = append(aliveCells, util.Cell{X: x, Y: y})
 			}
@@ -95,7 +97,9 @@ func makeWorld(height, width int) [][]byte {
 	return world
 }
 
-func worker(p Params, workerHeight int, topRowChan, bottomRowChan chan []byte, in <-chan []byte, out chan<- [][]byte) {
+func worker(p Params, workerHeight int, topRowChan, bottomRowChan chan []byte, in <-chan []byte, out chan<- [][]byte, wg *sync.WaitGroup) {
+
+	defer wg.Done()
 
 	worldPart := makeWorld(workerHeight+2, p.ImageWidth)
 	newWorldPart := makeWorld(workerHeight, p.ImageWidth)
@@ -145,6 +149,7 @@ func distributor(p Params, c distributorChannels) {
 		workerHeights[len(workerHeights)-1] += remainder
 	}
 
+	// Create all channels
 	outChans := make([]chan [][]byte, p.Threads)
 	inChans := make([]chan []byte, p.Threads)
 	haloChans := make([]chan []byte, p.Threads)
@@ -154,6 +159,39 @@ func distributor(p Params, c distributorChannels) {
 		inChans[i] = make(chan []byte)
 		haloChans[i] = make(chan []byte)
 	}
+
+	// Start workers
+	var wg sync.WaitGroup
+	for i := 0; i < p.Threads; i++ {
+		wg.Add(1)
+		go worker(p, workerHeights[i], haloChans[(i-1+p.Threads)%p.Threads], haloChans[i], inChans[i], outChans[i], &wg)
+	}
+
+	fmt.Println("I'm here now")
+
+	// Send data to workers
+	for i := range inChans {
+		if i != p.Threads-1 {
+			for y := i * workerHeights[i]; y < (i+1)*workerHeights[i]; y++ {
+				inChans[i] <- world[y]
+			}
+		} else {
+			for y := i * defaultHeight; y < p.ImageHeight; y++ {
+				inChans[i] <- world[y]
+			}
+		}
+	}
+
+	fmt.Println(&wg)
+	wg.Wait()
+
+	// Receive data from workers
+	newWorld := makeWorld(p.ImageHeight, p.ImageWidth)
+	for i := range outChans {
+		worldPart := <-outChans[i]
+		newWorld = append(newWorld, worldPart...)
+	}
+	fmt.Println(calculateAliveCells(p, newWorld))
 
 	// TODO: Execute all turns of the Game of Life.
 	// TODO: Send correct Events when required, e.g. CellFlipped, TurnComplete and FinalTurnComplete.
