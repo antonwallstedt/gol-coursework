@@ -95,39 +95,14 @@ func makeWorld(height, width int) [][]byte {
 	return world
 }
 
-func makeWorkerWorlds(p Params, world [][]byte, workerHeights []int) []workerWorld {
-	workerWorlds := []workerWorld{}
-	for _, workerHeight := range workerHeights {
-		tempWorld := makeWorld(workerHeight+2, p.ImageWidth)
-		workerWorlds = append(workerWorlds, workerWorld{data: tempWorld})
+func worker(p Params, workerHeight int, workerWorld [][]byte, out chan<- [][]byte) {
+	workerWorld = calculateNextState(p, workerWorld)
+	workerWorldPart := workerWorld[1:(workerHeight - 1)]
+	fmt.Println("workerWorldPart")
+	for _, row := range workerWorldPart {
+		fmt.Println(row)
 	}
-
-	for i := 0; i < p.Threads; i++ {
-		if i != p.Threads-1 {
-			workerWorlds[i].data = world[(i * workerHeights[i]):((i + 1) * workerHeights[i])]
-		} else {
-			workerWorlds[i].data = world[(i * workerHeights[0]):p.ImageHeight]
-		}
-	}
-	return workerWorlds
-}
-
-func worker(p Params, workerHeight int, toprowChan, bottomrowChan chan []byte, workerWorld [][]byte, out chan<- [][]byte) {
-
-	for turn := 0; turn < p.Turns; turn++ {
-		// Send off the top row and bottom row pixels to another worker
-		toprowChan <- workerWorld[1]
-		bottomrowChan <- workerWorld[workerHeight-1]
-
-		// Receive the top and bottom row pixels from another worker
-		workerWorld[0] = <-toprowChan
-		workerWorld[len(workerWorld)-1] = <-bottomrowChan
-
-		workerWorld = calculateNextState(p, workerWorld)
-	}
-
-	newWorldPart := workerWorld[1:(workerHeight - 1)]
-	out <- newWorldPart
+	out <- workerWorldPart
 
 }
 
@@ -162,45 +137,43 @@ func distributor(p Params, c distributorChannels) {
 		workerHeights[len(workerHeights)-1] += remainder
 	}
 
-	haloChannels := make([]chan []byte, p.Threads)
-	out := make([]chan [][]byte, p.Threads)
-
-	for i := 0; i < p.Threads; i++ {
-		haloChannels[i] = make(chan []byte)
-		out[i] = make(chan [][]byte)
-	}
-
-	workerWorlds := makeWorkerWorlds(p, world, workerHeights)
-
-	for i := 0; i < p.Threads; i++ {
-		go worker(p, workerHeights[i], haloChannels[(i-1+p.Threads)%p.Threads], haloChannels[i], workerWorlds[i].data, out[i])
-	}
-
-	// Receive data from workers
 	/*newWorld := makeWorld(p.ImageHeight, p.ImageWidth)
-	for i, channel := range dataChannels {
-		if i != p.Threads-1 {
-			for y := i * workerHeights[i]; y < (i+1)*workerHeights[i]; y++ {
-				newWorld[y] = <-channel
-			}
-		} else {
-			for y := i * workerHeights[0]; y < p.ImageHeight; y++ {
-				newWorld[y] = <-channel
-			}
-		}
-	}*/
-
-	newWorld := makeWorld(p.ImageHeight, p.ImageWidth)
 	for i := 0; i < p.Threads; i++ {
 		part := <-out[i]
 		newWorld = append(newWorld, part...)
 	}
-	world = newWorld
+	world = newWorld*/
 
 	// TODO: remove this and come up with another way of getting the value of turns from each worker back, as the turns loop
 	// 		 is now running inside each individual worker
+
+	outChans := make([]chan [][]byte, p.Threads)
+	for i := range outChans {
+		outChans[i] = make(chan [][]byte)
+	}
+
 	turn := 0
 	for turn < p.Turns {
+		for i := 0; i < p.Threads; i++ {
+			if i != p.Threads-1 {
+				workerWorld := world[(i * workerHeights[i]):((i + 1) * workerHeights[i])]
+				go worker(p, workerHeights[i], workerWorld, outChans[i])
+			} else {
+				workerWorld := world[(i * workerHeights[0]):(p.ImageHeight)]
+				go worker(p, workerHeights[i], workerWorld, outChans[i])
+			}
+		}
+
+		newWorld := makeWorld(p.ImageHeight, p.ImageWidth)
+		for _, outChan := range outChans {
+			part := <-outChan
+			newWorld = append(newWorld, part...)
+		}
+
+		x := world
+		world = newWorld
+		newWorld = x
+
 		turn++
 	}
 
