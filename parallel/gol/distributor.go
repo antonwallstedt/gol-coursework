@@ -95,15 +95,24 @@ func makeWorld(height, width int) [][]byte {
 	return world
 }
 
+func makeWorkerWorld(p Params, workerHeight int, world [][]byte, currentThread int) [][]byte {
+	workerWorld := makeWorld(workerHeight+2, p.ImageWidth)
+	workerWorld[0] = world[(currentThread*workerHeight+p.ImageHeight-1)%p.ImageHeight]
+	for y := 1; y <= workerHeight; y++ {
+		workerWorld[y] = world[currentThread*workerHeight+y-1]
+	}
+	workerWorld[workerHeight] = world[((currentThread+1)*workerHeight+p.ImageHeight)%p.ImageHeight]
+	return workerWorld
+}
+
 func worker(p Params, workerHeight int, workerWorld [][]byte, out chan<- [][]byte) {
-	workerWorld = calculateNextState(p, workerWorld)
-	workerWorldPart := workerWorld[1:(workerHeight - 1)]
-	fmt.Println("workerWorldPart")
-	for _, row := range workerWorldPart {
+	for _, row := range workerWorld {
 		fmt.Println(row)
 	}
-	out <- workerWorldPart
+	workerWorld = calculateNextState(p, workerWorld)
+	workerWorldPart := workerWorld[1:(workerHeight - 1)]
 
+	out <- workerWorldPart
 }
 
 /* distributor : Divides the work between workers and interacts with other goroutines. */
@@ -137,36 +146,24 @@ func distributor(p Params, c distributorChannels) {
 		workerHeights[len(workerHeights)-1] += remainder
 	}
 
-	/*newWorld := makeWorld(p.ImageHeight, p.ImageWidth)
-	for i := 0; i < p.Threads; i++ {
-		part := <-out[i]
-		newWorld = append(newWorld, part...)
-	}
-	world = newWorld*/
-
-	// TODO: remove this and come up with another way of getting the value of turns from each worker back, as the turns loop
-	// 		 is now running inside each individual worker
-
 	outChans := make([]chan [][]byte, p.Threads)
 	for i := range outChans {
 		outChans[i] = make(chan [][]byte)
 	}
 
+	workerWorld := makeWorld(p.ImageHeight, p.ImageWidth)
+	_ = copy(workerWorld, world)
+
 	turn := 0
 	for turn < p.Turns {
+
 		for i := 0; i < p.Threads; i++ {
-			if i != p.Threads-1 {
-				workerWorld := world[(i * workerHeights[i]):((i + 1) * workerHeights[i])]
-				go worker(p, workerHeights[i], workerWorld, outChans[i])
-			} else {
-				workerWorld := world[(i * workerHeights[0]):(p.ImageHeight)]
-				go worker(p, workerHeights[i], workerWorld, outChans[i])
-			}
+			go worker(p, workerHeights[i], makeWorkerWorld(p, workerHeights[i], workerWorld, i), outChans[i])
 		}
 
 		newWorld := makeWorld(p.ImageHeight, p.ImageWidth)
-		for _, outChan := range outChans {
-			part := <-outChan
+		for i := range outChans {
+			part := <-outChans[i]
 			newWorld = append(newWorld, part...)
 		}
 
