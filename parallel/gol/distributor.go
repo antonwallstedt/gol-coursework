@@ -161,6 +161,9 @@ func distributor(p Params, c distributorChannels, keyPresses <-chan rune) {
 	for y := 0; y < p.ImageHeight; y++ {
 		for x := 0; x < p.ImageWidth; x++ {
 			input := <-c.ioInput
+			if input == ALIVE {
+				c.events <- CellFlipped{CompletedTurns: 0, Cell: util.Cell{X: x, Y: y}}
+			}
 			world[y][x] = input
 
 		}
