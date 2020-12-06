@@ -86,7 +86,7 @@ func calculateNeighbours(p Params, x, y int, world [][]byte) int {
 	return neighbours
 }
 
-//Worker is the functino that used to calculate the logic of the program and giving each byte of newWorld to distributor for finalComplete turn channel.
+// Worker is the functino that used to calculate the logic of the program and giving each byte of newWorld to distributor for finalComplete turn channel.
 func worker(c distributorChannels, p Params, workerChan chan byte, imageHeight int, imageWidth int, outChan chan byte, Thread, currentThread int) {
 
 	world := make([][]byte, imageHeight+2)
@@ -127,6 +127,7 @@ func worker(c distributorChannels, p Params, workerChan chan byte, imageHeight i
 			}
 		}
 	}
+
 	//Here is where we ignore the first and the last row.
 	for y := 0; y < imageHeight; y++ {
 		for x := 0; x < imageWidth; x++ {
