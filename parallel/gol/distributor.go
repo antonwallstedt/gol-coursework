@@ -172,6 +172,28 @@ func distributor(p Params, c distributorChannels, keyPresses <-chan rune) {
 	turn := 0
 
 	for turn < p.Turns {
+
+		select {
+		// case <-ticker.C:
+		case c := <-keyPresses:
+			if c == 's' {
+			} else if c == 'q' {
+				fmt.Println("Terminated.")
+				return
+			} else if c == 'p' {
+				// fmt.Println(turns)
+				fmt.Println("pausing")
+				for {
+					tempKey := <-keyPresses
+					if tempKey == 'p' {
+						fmt.Println("continuing.")
+						break
+					}
+				}
+			}
+		default:
+		}
+
 		go func() {
 			select {
 			case <-ticker.C:
