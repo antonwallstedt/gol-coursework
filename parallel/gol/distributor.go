@@ -112,13 +112,13 @@ func worker(c distributorChannels, p Params, workerChan chan byte, imageHeight i
 					newWorld[y][x] = ALIVE
 				} else {
 					newWorld[y][x] = DEAD
-					c.events <- CellFlipped{p.Turns, util.Cell{X: x, Y: y}}
+					c.events <- CellFlipped{p.Turns, util.Cell{X: x, Y: currentThread*imageHeight + y - 1}}
 
 				}
 			} else {
 				if neighboursAlive == 3 {
 					newWorld[y][x] = ALIVE
-					c.events <- CellFlipped{p.Turns, util.Cell{X: x, Y: y}}
+					c.events <- CellFlipped{p.Turns, util.Cell{X: x, Y: currentThread*imageHeight + y - 1}}
 				} else {
 					newWorld[y][x] = DEAD
 				}
@@ -190,13 +190,6 @@ func distributor(p Params, c distributorChannels, keyPresses <-chan rune) {
 			}
 
 		}()
-		for y := 0; y < p.ImageHeight; y++ {
-			for x := 0; x < p.ImageWidth; x++ {
-				if world[y][x] != DEAD {
-					c.events <- CellFlipped{p.Turns, util.Cell{X: x, Y: y}}
-				}
-			}
-		}
 
 		var workerHeight int
 		outChan := make([]chan byte, p.Threads)
