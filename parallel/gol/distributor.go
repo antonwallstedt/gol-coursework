@@ -2,6 +2,7 @@ package gol
 
 import (
 	"fmt"
+	"os"
 	"sync"
 	"time"
 
@@ -175,18 +176,20 @@ func distributor(p Params, c distributorChannels, keyPresses <-chan rune) {
 
 		select {
 		// case <-ticker.C:
-		case c := <-keyPresses:
-			if c == 's' {
-			} else if c == 'q' {
+		case keyPress := <-keyPresses:
+			if keyPress == 's' {
+				printBoard(c, p, world)
+			} else if keyPress == 'q' {
+				printBoard(c, p, world)
 				fmt.Println("Terminated.")
-				return
-			} else if c == 'p' {
+				os.Exit(3)
+			} else if keyPress == 'p' {
 				// fmt.Println(turns)
-				fmt.Println("pausing")
+				fmt.Println("Pausing.")
 				for {
 					tempKey := <-keyPresses
 					if tempKey == 'p' {
-						fmt.Println("continuing.")
+						fmt.Println("Proceeding.")
 						break
 					}
 				}
@@ -284,9 +287,19 @@ func distributor(p Params, c distributorChannels, keyPresses <-chan rune) {
 	close(c.events)
 	mutex.Unlock()
 }
-func printBoard(d distributorChannels, p Params, world [][]byte, turn int) {
+
+func printBoard(d distributorChannels, p Params, world [][]byte) {
 
 	d.ioCommand <- ioOutput
 	d.ioFileName <- fmt.Sprintf("%vx%v", p.ImageHeight, p.ImageWidth)
+
+	for y := 0; y < p.ImageHeight; y++ {
+		for x := 0; x < p.ImageWidth; x++ {
+			d.ioOutput <- world[y][x]
+		}
+	}
+
+	d.ioCommand <- ioCheckIdle
+	<-d.ioIdle
 
 }
