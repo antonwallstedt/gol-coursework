@@ -156,7 +156,6 @@ func distributor(p Params, c distributorChannels, keyPresses <-chan rune) {
 		newWorld[i] = make([]byte, p.ImageWidth)
 	}
 	ticker := time.NewTicker(2 * time.Second)
-	done := make(chan bool)
 
 	// TODO: For all initially alive cells send a CellFlipped Event.
 	for y := 0; y < p.ImageHeight; y++ {
@@ -178,9 +177,9 @@ func distributor(p Params, c distributorChannels, keyPresses <-chan rune) {
 		// case <-ticker.C:
 		case keyPress := <-keyPresses:
 			if keyPress == 's' {
-				printBoard(c, p, world)
+				printBoard(c, p, world, turn)
 			} else if keyPress == 'q' {
-				printBoard(c, p, world)
+				printBoard(c, p, world, turn)
 				fmt.Println("Terminated.")
 				os.Exit(3)
 			} else if keyPress == 'p' {
@@ -211,10 +210,7 @@ func distributor(p Params, c distributorChannels, keyPresses <-chan rune) {
 				mutex.Lock()
 				c.events <- AliveCellsCount{turn, aliveCell}
 				mutex.Unlock()
-
-			case <-done:
-				return
-
+			default:
 			}
 
 		}()
@@ -271,16 +267,14 @@ func distributor(p Params, c distributorChannels, keyPresses <-chan rune) {
 		}
 	}
 
-		}
-	}
-	TurnComplete.CompletedTurns = turn
-	c.events <- TurnComplete
 	FinalTurnComplete.Alive = listCell
 	FinalTurnComplete.CompletedTurns = turn
 	c.events <- FinalTurnComplete
 	// TODO: Execute all turns of the Game of Life.
 	// TODO: Send correct Events when required, e.g. CellFlipped, TurnComplete and FinalTurnComplete.
 	//		 See event.go for a list of all events.
+
+	printBoard(c, p, world, turn)
 
 	// Make sure that the Io has finished any output before exiting.
 	c.ioCommand <- ioCheckIdle
@@ -290,15 +284,13 @@ func distributor(p Params, c distributorChannels, keyPresses <-chan rune) {
 	c.events <- FinalTurnComplete
 	c.events <- StateChange{turn, Quitting}
 	// Close the channel to stop the SDL goroutine gracefully. Removing may cause deadlock.
-	mutex.Lock()
 	close(c.events)
-	mutex.Unlock()
 }
 
-func printBoard(d distributorChannels, p Params, world [][]byte) {
+func printBoard(d distributorChannels, p Params, world [][]byte, turn int) {
 
 	d.ioCommand <- ioOutput
-	d.ioFileName <- fmt.Sprintf("%vx%v", p.ImageHeight, p.ImageWidth)
+	d.ioFileName <- fmt.Sprintf("%vx%vx%v", p.ImageHeight, p.ImageWidth, turn)
 
 	for y := 0; y < p.ImageHeight; y++ {
 		for x := 0; x < p.ImageWidth; x++ {
