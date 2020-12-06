@@ -102,7 +102,8 @@ func printWorld(world [][]byte) {
 	}
 }
 
-func worker(id int, p Params, workerHeight int, topRowChan, bottomRowChan chan []byte, in <-chan []byte, out chan<- [][]byte) {
+func worker(id int, p Params, workerHeight int, topRowChan, bottomRowChan chan []byte, in <-chan []byte, out chan<- [][]byte, parity int) {
+
 	worldPart := makeWorld(workerHeight+2, p.ImageWidth)
 	newWorldPart := makeWorld(workerHeight, p.ImageWidth)
 	for y := 1; y <= workerHeight; y++ {
@@ -110,10 +111,17 @@ func worker(id int, p Params, workerHeight int, topRowChan, bottomRowChan chan [
 	}
 
 	for turn := 0; turn < p.Turns; turn++ {
-		bottomRowChan <- worldPart[workerHeight]
-		worldPart[0] = <-topRowChan
-		topRowChan <- worldPart[1]
-		worldPart[workerHeight+1] = <-bottomRowChan
+		if parity == 1 {
+			bottomRowChan <- worldPart[workerHeight]
+			worldPart[0] = <-topRowChan
+			topRowChan <- worldPart[1]
+			worldPart[workerHeight+1] = <-bottomRowChan
+		} else {
+			worldPart[0] = <-topRowChan
+			bottomRowChan <- worldPart[workerHeight]
+			worldPart[workerHeight+1] = <-bottomRowChan
+			topRowChan <- worldPart[1]
+		}
 		worldPart = calculateNextState(p, worldPart)
 	}
 
@@ -162,12 +170,12 @@ func distributor(p Params, c distributorChannels) {
 	for i := 0; i < p.Threads; i++ {
 		outChans[i] = make(chan [][]byte)
 		inChans[i] = make(chan []byte)
-		haloChans[i] = make(chan []byte, p.Threads)
+		haloChans[i] = make(chan []byte, p.ImageHeight)
 	}
 
 	// Start workers
 	for i := 0; i < p.Threads; i++ {
-		go worker(i, p, workerHeights[i], haloChans[(i-1+p.Threads)%p.Threads], haloChans[i], inChans[i], outChans[i])
+		go worker(i, p, workerHeights[i], haloChans[(i-1+p.Threads)%p.Threads], haloChans[i], inChans[i], outChans[i], i%2)
 	}
 
 	// Send data to workers
