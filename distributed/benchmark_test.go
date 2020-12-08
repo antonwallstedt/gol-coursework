@@ -22,7 +22,7 @@ func BenchmarkSerial(b *testing.B) {
 		b.Run(testName, func(b *testing.B) {
 			b.StartTimer()
 			events := make(chan gol.Event)
-			gol.Run(params, nil, nil)
+			gol.Run(params, events, nil)
 			for event := range events {
 				switch event.(type) {
 				case gol.FinalTurnComplete:
