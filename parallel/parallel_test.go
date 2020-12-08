@@ -8,7 +8,7 @@ import (
 )
 
 const (
-	turns       = 1000
+	turns       = 250
 	imageHeight = 512
 	imageWidth  = 512
 )
