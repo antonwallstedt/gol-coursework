@@ -1,22 +1,13 @@
-package gol
+package engine
 
 import (
-	"fmt"
-
+	"uk.ac.bris.cs/gameoflife/gol"
+	"uk.ac.bris.cs/gameoflife/stubs"
 	"uk.ac.bris.cs/gameoflife/util"
 )
 
 const ALIVE = 255
 const DEAD = 0
-
-type distributorChannels struct {
-	events     chan<- Event
-	ioCommand  chan<- ioCommand
-	ioIdle     <-chan bool
-	ioFilename chan<- string
-	ioOutput   chan<- uint8
-	ioInput    <-chan uint8
-}
 
 func makeWorld(height, width int) [][]byte {
 	world := make([][]byte, height)
@@ -46,7 +37,7 @@ func calculateNeighbours(x, y int, world [][]byte) int {
 	return neighbours
 }
 
-func calculateNextState(p Params, world [][]byte) [][]byte {
+func calculateNextState(p gol.Params, world [][]byte) [][]byte {
 	height := len(world)
 	width := p.ImageWidth
 	newWorld := makeWorld(height, width)
@@ -71,7 +62,7 @@ func calculateNextState(p Params, world [][]byte) [][]byte {
 	return newWorld
 }
 
-func calculateAliveCells(p Params, world [][]byte) []util.Cell {
+func calculateAliveCells(p gol.Params, world [][]byte) []util.Cell {
 	aliveCells := []util.Cell{}
 	for y := 0; y < p.ImageHeight; y++ {
 		for x := 0; x < p.ImageWidth; x++ {
@@ -83,38 +74,21 @@ func calculateAliveCells(p Params, world [][]byte) []util.Cell {
 	return aliveCells
 }
 
-// distributor divides the work between workers and interacts with other goroutines.
-func distributor(p Params, c distributorChannels) {
+type Work struct {
+	params gol.Params
+	world  [][]byte
+}
 
-	c.ioCommand <- ioInput
-	c.ioFilename <- fmt.Sprintf("%vx%v", p.ImageHeight, p.ImageWidth)
-
-	world := makeWorld(p.ImageHeight, p.ImageWidth)
-
-	// TODO: For all initially alive cells send a CellFlipped Event.
-	for y := range world {
-		for x := range world {
-			world[y][x] = <-c.ioInput
-		}
-	}
-
+func gameOfLife(p gol.Params, world [][]byte) {
 	turn := 0
 	for turn < p.Turns {
 		world = calculateNextState(p, world)
 		turn++
 	}
+}
 
-	// TODO: Execute all turns of the Game of Life.
-	// TODO: Send correct Events when required, e.g. CellFlipped, TurnComplete and FinalTurnComplete.
-	//		 See event.go for a list of all events.
+type Engine struct{}
 
-	c.events <- FinalTurnComplete{CompletedTurns: turn, Alive: calculateAliveCells(p, world)}
+func (e *Engine) GameOfLife(req stubs.Request) {
 
-	// Make sure that the Io has finished any output before exiting.
-	c.ioCommand <- ioCheckIdle
-	<-c.ioIdle
-
-	c.events <- StateChange{turn, Quitting}
-	// Close the channel to stop the SDL goroutine gracefully. Removing may cause deadlock.
-	close(c.events)
 }
