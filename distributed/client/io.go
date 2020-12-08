@@ -1,4 +1,4 @@
-package gol
+package client
 
 import (
 	"fmt"
@@ -11,9 +11,8 @@ import (
 )
 
 type ioChannels struct {
-	command <-chan ioCommand
-	idle    chan<- bool
-
+	command  <-chan ioCommand
+	idle     chan<- bool
 	filename <-chan string
 	output   <-chan uint8
 	input    chan<- uint8
