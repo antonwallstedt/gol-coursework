@@ -1,7 +1,8 @@
-package gol
+package client
 
 import (
 	"fmt"
+
 	"uk.ac.bris.cs/gameoflife/util"
 )
 

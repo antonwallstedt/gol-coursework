@@ -1,4 +1,4 @@
-package gol
+package client
 
 import (
 	"fmt"
@@ -6,6 +6,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+
 	"uk.ac.bris.cs/gameoflife/util"
 )
 
@@ -16,6 +17,8 @@ type ioChannels struct {
 	filename <-chan string
 	output   <-chan uint8
 	input    chan<- uint8
+	world    <-chan [][]byte
+	turns    <-chan int
 }
 
 // ioState is the internal ioState of the io goroutine.
