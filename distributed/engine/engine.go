@@ -1,13 +1,26 @@
-package engine
+package main
 
 import (
-	"uk.ac.bris.cs/gameoflife/gol"
+	"errors"
+	"flag"
+	"fmt"
+	"math/rand"
+	"net"
+	"net/rpc"
+	"time"
+
 	"uk.ac.bris.cs/gameoflife/stubs"
-	"uk.ac.bris.cs/gameoflife/util"
 )
 
-const ALIVE = 255
-const DEAD = 0
+type Work struct {
+	World [][]byte
+	Turn  int
+}
+
+const (
+	ALIVE = 255
+	DEAD  = 0
+)
 
 func makeWorld(height, width int) [][]byte {
 	world := make([][]byte, height)
@@ -37,9 +50,9 @@ func calculateNeighbours(x, y int, world [][]byte) int {
 	return neighbours
 }
 
-func calculateNextState(p gol.Params, world [][]byte) [][]byte {
+func calculateNextState(world [][]byte) [][]byte {
 	height := len(world)
-	width := p.ImageWidth
+	width := len(world[0])
 	newWorld := makeWorld(height, width)
 	for y := 0; y < height; y++ {
 		for x := 0; x < width; x++ {
@@ -62,33 +75,37 @@ func calculateNextState(p gol.Params, world [][]byte) [][]byte {
 	return newWorld
 }
 
-func calculateAliveCells(p gol.Params, world [][]byte) []util.Cell {
-	aliveCells := []util.Cell{}
-	for y := 0; y < p.ImageHeight; y++ {
-		for x := 0; x < p.ImageWidth; x++ {
-			if world[y][x] == ALIVE {
-				aliveCells = append(aliveCells, util.Cell{X: x, Y: y})
-			}
-		}
-	}
-	return aliveCells
-}
-
-type Work struct {
-	params gol.Params
-	world  [][]byte
-}
-
-func gameOfLife(p gol.Params, world [][]byte) {
+/* Secret Game of Life function */
+func gameOfLife(turns int, world [][]byte) Work {
 	turn := 0
-	for turn < p.Turns {
-		world = calculateNextState(p, world)
+	for turn < turns {
+		world = calculateNextState(world)
 		turn++
 	}
+	return Work{World: world, Turn: turn}
 }
 
 type Engine struct{}
 
-func (e *Engine) GameOfLife(req stubs.Request) {
+// GameOfLife : runs the game of life after getting a request from the controller
+func (e *Engine) GameOfLife(req stubs.Request, res *stubs.Response) (err error) {
+	if req.World == nil {
+		err = errors.New("a world must be specified")
+		return
+	}
+	fmt.Println("Received world")
+	work := gameOfLife(req.Turns, req.World)
+	res.Turn = work.Turn
+	res.World = work.World
+	return
+}
 
+func main() {
+	pAddr := flag.String("port", "8030", "Port to listen on")
+	flag.Parse()
+	rand.Seed(time.Now().UnixNano())
+	rpc.Register(&Engine{})
+	listener, _ := net.Listen("tcp", ":"+*pAddr)
+	defer listener.Close()
+	rpc.Accept(listener)
 }

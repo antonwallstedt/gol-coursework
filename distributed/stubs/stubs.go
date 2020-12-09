@@ -1,12 +1,13 @@
 package stubs
 
-var ReverseHandler = "SecretStringOperations.Reverse"
-var PremiumReverseHandler = "SecretStringOperations.FastReverse"
+var GameOfLifeHandler = "Engine.GameOfLife"
 
 type Response struct {
-	Message string
+	World [][]byte
+	Turn  int
 }
 
 type Request struct {
-	Message string
+	World [][]byte
+	Turns int
 }
