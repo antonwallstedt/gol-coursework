@@ -22,6 +22,9 @@ const (
 	DEAD  = 0
 )
 
+var numAliveCells int
+var turn int
+
 func makeWorld(height, width int) [][]byte {
 	world := make([][]byte, height)
 	for i := range world {
@@ -50,6 +53,19 @@ func calculateNeighbours(x, y int, world [][]byte) int {
 	return neighbours
 }
 
+// getAliveCells : gets the number of alive cells from a given world
+func getAliveCells(world [][]byte) int {
+	aliveCells := 0
+	for y := range world {
+		for x := range world {
+			if world[y][x] == ALIVE {
+				aliveCells++
+			}
+		}
+	}
+	return aliveCells
+}
+
 func calculateNextState(world [][]byte) [][]byte {
 	height := len(world)
 	width := len(world[0])
@@ -75,13 +91,19 @@ func calculateNextState(world [][]byte) [][]byte {
 	return newWorld
 }
 
-/* Secret Game of Life function */
+// Evolves the Game of Life for a given number of turns and a given world
 func gameOfLife(turns int, world [][]byte) Work {
-	turn := 0
+	turn = 0
 	for turn < turns {
 		world = calculateNextState(world)
+
+		if turn%10 == 0 && turn != 0 {
+			fmt.Println("Turn ", turn, " computed")
+		}
+
 		turn++
 	}
+	fmt.Println("Finished computing\n")
 	return Work{World: world, Turn: turn}
 }
 

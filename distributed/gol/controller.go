@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"net/rpc"
+	"time"
 
 	"uk.ac.bris.cs/gameoflife/stubs"
 	"uk.ac.bris.cs/gameoflife/util"
@@ -50,11 +51,19 @@ func calculateAliveCells(world [][]byte) []util.Cell {
 	return aliveCells
 }
 
-func makeCall(client rpc.Client, world [][]byte, turns int) Work {
+// Requests the engine to compute the Game of Life for a given number of turns and on a given world
+func requestGameOfLife(client rpc.Client, world [][]byte, turns int) Work {
 	request := stubs.Request{World: world, Turns: turns}
 	response := new(stubs.Response)
 	client.Call(stubs.GameOfLifeHandler, request, response)
 	return Work{World: response.World, Turn: response.Turn}
+}
+
+func requestAliveCells(client rpc.Client) int {
+	request := stubs.RequestAliveCells{}
+	response := new(stubs.ResponseAliveCells)
+	client.Call(stubs.AliveCellsHandler, request, response)
+	return response.NumAliveCells
 }
 
 func controller(p Params, c controllerChannels) {
@@ -63,9 +72,13 @@ func controller(p Params, c controllerChannels) {
 	c.ioFilename <- fmt.Sprintf("%dx%d", p.ImageHeight, p.ImageWidth)
 
 	// Dial server
-	server := flag.String("server", "127.0.0.1:8030", "IP:port string to connect to as server")
-	flag.Parse()
-	client, _ := rpc.Dial("tcp", *server)
+	var serverIP string
+	if flag.Lookup("server") != nil {
+		serverIP = flag.Lookup("server").Value.String()
+	} else {
+		serverIP = "127.0.0.1:8030"
+	}
+	client, _ := rpc.Dial("tcp", serverIP)
 	defer client.Close()
 
 	// Load world in
@@ -76,8 +89,19 @@ func controller(p Params, c controllerChannels) {
 		}
 	}
 
+	var numAliveCells int
+	ticker := time.NewTicker(2 * time.Second)
+	go func() {
+		select {
+		case <-ticker.C:
+			numAliveCells = requestAliveCells(*client)
+			c.events <- AliveCellsCount{CompletedTurns: 0, CellsCount: numAliveCells}
+		default:
+		}
+	}()
+
 	// Make call to server to process game
-	resultWork := makeCall(*client, world, p.Turns)
+	resultWork := requestGameOfLife(*client, world, p.Turns)
 
 	// Calculate alive cells
 	c.events <- FinalTurnComplete{CompletedTurns: resultWork.Turn, Alive: calculateAliveCells(resultWork.World)}
