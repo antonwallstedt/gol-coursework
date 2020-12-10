@@ -18,12 +18,22 @@ type Work struct {
 	Turn  int
 }
 
+type AliveCells struct {
+	NumAliveCells  int
+	CompletedTurns int
+}
+
 const (
 	// ALIVE : pixel value for alive cells
 	ALIVE = 255
 
 	// DEAD : pixel value for dead cells
 	DEAD = 0
+)
+
+const (
+	requestAliveCells = iota
+	requestPgm
 )
 
 func makeWorld(height, width int) [][]byte {
@@ -55,8 +65,8 @@ func calculateNeighbours(x, y int, world [][]byte) int {
 	return neighbours
 }
 
-// getAliveCells : gets the number of alive cells from a given world
-func getAliveCells(world [][]byte) int {
+// numAliveCells : gets the number of alive cells from a given world
+func numAliveCells(world [][]byte) int {
 	aliveCells := 0
 	for y := range world {
 		for x := range world {
@@ -95,16 +105,27 @@ func calculateNextState(world [][]byte) [][]byte {
 }
 
 // Evolves the Game of Life for a given number of turns and a given world
-func gameOfLife(turns int, world [][]byte, workChan chan Work) {
+func gameOfLife(turns int, world [][]byte, workChan chan Work, cmdChan chan int, aliveCellsChan chan AliveCells) {
 	turn := 0
 	for turn < turns {
+
+		select {
+		case cmd := <-cmdChan:
+			switch cmd {
+			case requestAliveCells:
+				aliveCellsChan <- AliveCells{NumAliveCells: numAliveCells(world), CompletedTurns: turn}
+			}
+		default:
+		}
+
 		world = calculateNextState(world)
 
-		if turn%10 == 0 && turn != 0 {
+		if turn%100 == 0 && turn != 0 {
 			fmt.Println("Turn ", turn, " computed")
 		}
 
 		turn++
+
 	}
 	fmt.Println("Sending world back")
 	workChan <- Work{World: world, Turn: turn}
@@ -116,10 +137,19 @@ func getResults(workChan chan Work) Work {
 	return Work{World: result.World, Turn: result.Turn}
 }
 
+// Gets the number of alive cells and number of completed turns from the alive cells channel
+func getAliveCells(aliveCellsChan chan AliveCells, cmdChan chan int) AliveCells {
+	cmdChan <- requestAliveCells
+	aliveCells := <-aliveCellsChan
+	return AliveCells{NumAliveCells: aliveCells.NumAliveCells, CompletedTurns: aliveCells.CompletedTurns}
+}
+
 // Engine : used to run functions that respond to requests made by the controller.
 // 			Can communicate the work that's being done using a channel
 type Engine struct {
-	workChan chan Work
+	workChan       chan Work
+	aliveCellsChan chan AliveCells
+	cmdChan        chan int
 }
 
 // GameOfLife : runs the game of life after getting a request from the controller
@@ -129,7 +159,7 @@ func (e *Engine) GameOfLife(req stubs.RequestStart, res *stubs.ResponseStart) (e
 		res.Message = "invalid world"
 		return
 	}
-	go gameOfLife(req.Turns, req.World, e.workChan)
+	go gameOfLife(req.Turns, req.World, e.workChan, e.cmdChan, e.aliveCellsChan)
 	res.Message = "received world"
 	return
 }
@@ -142,12 +172,22 @@ func (e *Engine) GetResults(req stubs.RequestResult, res *stubs.ResponseResult) 
 	return
 }
 
+// AliveCells : gets the number of alive cells when requested by the controller
+func (e *Engine) AliveCells(req stubs.RequestAliveCells, res *stubs.ResponseAliveCells) (err error) {
+	aliveCells := getAliveCells(e.aliveCellsChan, e.cmdChan)
+	res.NumAliveCells = aliveCells.NumAliveCells
+	res.CompletedTurns = aliveCells.CompletedTurns
+	return
+}
+
 func main() {
 	workChan := make(chan Work)
+	aliveCellsChan := make(chan AliveCells)
+	cmdChan := make(chan int)
 	pAddr := flag.String("port", "8030", "Port to listen on")
 	flag.Parse()
 	rand.Seed(time.Now().UnixNano())
-	rpc.Register(&Engine{workChan: workChan})
+	rpc.Register(&Engine{workChan: workChan, aliveCellsChan: aliveCellsChan, cmdChan: cmdChan})
 	listener, _ := net.Listen("tcp", ":"+*pAddr)
 	defer listener.Close()
 	rpc.Accept(listener)

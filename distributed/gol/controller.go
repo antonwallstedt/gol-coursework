@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"net/rpc"
+	"time"
 
 	"uk.ac.bris.cs/gameoflife/stubs"
 	"uk.ac.bris.cs/gameoflife/util"
@@ -17,6 +18,11 @@ const (
 type Work struct {
 	World [][]byte
 	Turn  int
+}
+
+type AliveCells struct {
+	NumAliveCells  int
+	CompletedTurns int
 }
 
 type controllerChannels struct {
@@ -65,11 +71,11 @@ func requestResults(client rpc.Client) Work {
 	return Work{World: response.World, Turn: response.Turn}
 }
 
-func requestAliveCells(client rpc.Client) int {
+func requestAliveCells(client rpc.Client) AliveCells {
 	request := stubs.RequestAliveCells{}
 	response := new(stubs.ResponseAliveCells)
 	client.Call(stubs.AliveCellsHandler, request, response)
-	return response.NumAliveCells
+	return AliveCells{NumAliveCells: response.NumAliveCells, CompletedTurns: response.CompletedTurns}
 }
 
 func controller(p Params, c controllerChannels) {
@@ -97,6 +103,19 @@ func controller(p Params, c controllerChannels) {
 
 	// Make call to server to start Game of Life
 	startGameOfLife(*client, world, p.Turns)
+
+	// Request number of alive cells every two seconds
+	ticker := time.NewTicker(2 * time.Second)
+	go func() {
+		for {
+			select {
+			case <-ticker.C:
+				aliveCells := requestAliveCells(*client)
+				c.events <- AliveCellsCount{CompletedTurns: aliveCells.CompletedTurns, CellsCount: aliveCells.NumAliveCells}
+			default:
+			}
+		}
+	}()
 
 	// Request results
 	resultWork := requestResults(*client)
