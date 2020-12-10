@@ -24,6 +24,7 @@ func Run(p Params, events chan<- Event, keyPresses <-chan rune) {
 		ioFilename,
 		ioOutput,
 		ioInput,
+		keyPresses,
 	}
 	go controller(p, controllerChannels)
 

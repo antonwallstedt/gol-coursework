@@ -34,7 +34,10 @@ const (
 const (
 	requestAliveCells = iota
 	requestPgm
+	requestPause
 )
+
+var globalWorld [][]byte = nil
 
 func makeWorld(height, width int) [][]byte {
 	world := make([][]byte, height)
@@ -105,15 +108,32 @@ func calculateNextState(world [][]byte) [][]byte {
 }
 
 // Evolves the Game of Life for a given number of turns and a given world
-func gameOfLife(turns int, world [][]byte, workChan chan Work, cmdChan chan int, aliveCellsChan chan AliveCells) {
+func gameOfLife(turns int, world [][]byte, workChan chan Work, cmdChan chan int, aliveCellsChan chan AliveCells, responseMsgChan chan string, paused bool) {
 	turn := 0
 	for turn < turns {
-
 		select {
 		case cmd := <-cmdChan:
 			switch cmd {
 			case requestAliveCells:
 				aliveCellsChan <- AliveCells{NumAliveCells: numAliveCells(world), CompletedTurns: turn}
+			case requestPgm:
+				workChan <- Work{World: world, Turn: turn}
+			case requestPause:
+				if paused == false {
+					responseMsg := fmt.Sprintf("Pausing on turn %d", turn)
+					responseMsgChan <- responseMsg
+					paused = true
+					for paused {
+						select {
+						case c := <-cmdChan:
+							if c == requestPause {
+								responseMsgChan <- "Continuing"
+								paused = false
+							}
+						default:
+						}
+					}
+				}
 			}
 		default:
 		}
@@ -144,22 +164,41 @@ func getAliveCells(aliveCellsChan chan AliveCells, cmdChan chan int) AliveCells 
 	return AliveCells{NumAliveCells: aliveCells.NumAliveCells, CompletedTurns: aliveCells.CompletedTurns}
 }
 
+// Gets the board state
+func getPGM(workChan chan Work, cmdChan chan int) Work {
+	cmdChan <- requestPgm
+	work := <-workChan
+	return Work{work.World, work.Turn}
+}
+
+func pause(cmdChan chan int, responseMsgChan chan string) string {
+	cmdChan <- requestPause
+	response := <-responseMsgChan
+	return response
+}
+
 // Engine : used to run functions that respond to requests made by the controller.
 // 			Can communicate the work that's being done using a channel
 type Engine struct {
-	workChan       chan Work
-	aliveCellsChan chan AliveCells
-	cmdChan        chan int
+	workChan        chan Work
+	aliveCellsChan  chan AliveCells
+	cmdChan         chan int
+	responseMsgChan chan string
 }
 
 // GameOfLife : runs the game of life after getting a request from the controller
 func (e *Engine) GameOfLife(req stubs.RequestStart, res *stubs.ResponseStart) (err error) {
+	var world [][]byte
 	if req.World == nil {
 		err = errors.New("a world must be specified")
 		res.Message = "invalid world"
 		return
+	} else if globalWorld == nil {
+		world = req.World
+	} else {
+
 	}
-	go gameOfLife(req.Turns, req.World, e.workChan, e.cmdChan, e.aliveCellsChan)
+	go gameOfLife(req.Turns, world, e.workChan, e.cmdChan, e.aliveCellsChan, e.responseMsgChan, false)
 	res.Message = "received world"
 	return
 }
@@ -180,14 +219,30 @@ func (e *Engine) AliveCells(req stubs.RequestAliveCells, res *stubs.ResponseAliv
 	return
 }
 
+// GetPGM : gets the board state so it can be sent to the controller to be saved as a PGM image
+func (e *Engine) GetPGM(req stubs.RequestPGM, res *stubs.ResponsePGM) (err error) {
+	boardState := getPGM(e.workChan, e.cmdChan)
+	res.World = boardState.World
+	res.Turn = boardState.Turn
+	return
+}
+
+// Pause : pauses the computation
+func (e *Engine) Pause(req stubs.RequestPause, res *stubs.ResponsePause) (err error) {
+	response := pause(e.cmdChan, e.responseMsgChan)
+	res.Message = response
+	return
+}
+
 func main() {
 	workChan := make(chan Work)
 	aliveCellsChan := make(chan AliveCells)
 	cmdChan := make(chan int)
+	responseMsgChan := make(chan string)
 	pAddr := flag.String("port", "8030", "Port to listen on")
 	flag.Parse()
 	rand.Seed(time.Now().UnixNano())
-	rpc.Register(&Engine{workChan: workChan, aliveCellsChan: aliveCellsChan, cmdChan: cmdChan})
+	rpc.Register(&Engine{workChan: workChan, aliveCellsChan: aliveCellsChan, cmdChan: cmdChan, responseMsgChan: responseMsgChan})
 	listener, _ := net.Listen("tcp", ":"+*pAddr)
 	defer listener.Close()
 	rpc.Accept(listener)

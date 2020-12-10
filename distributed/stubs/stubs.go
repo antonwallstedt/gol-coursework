@@ -3,6 +3,8 @@ package stubs
 var GameOfLifeHandler = "Engine.GameOfLife"
 var AliveCellsHandler = "Engine.AliveCells"
 var ResultsHandler = "Engine.GetResults"
+var PGMHandler = "Engine.GetPGM"
+var PauseHandler = "Engine.Pause"
 
 type ResponseStart struct {
 	Message string
@@ -18,6 +20,15 @@ type ResponseResult struct {
 	Turn  int
 }
 
+type ResponsePGM struct {
+	World [][]byte
+	Turn  int
+}
+
+type ResponsePause struct {
+	Message string
+}
+
 type RequestStart struct {
 	World [][]byte
 	Turns int
@@ -26,3 +37,7 @@ type RequestStart struct {
 type RequestResult struct{}
 
 type RequestAliveCells struct{}
+
+type RequestPGM struct{}
+
+type RequestPause struct{}

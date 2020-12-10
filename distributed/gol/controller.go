@@ -32,6 +32,7 @@ type controllerChannels struct {
 	ioFilename chan<- string
 	ioOutput   chan<- uint8
 	ioInput    <-chan uint8
+	keyPresses <-chan rune
 }
 
 func makeWorld(height, width int) [][]byte {
@@ -56,7 +57,8 @@ func calculateAliveCells(world [][]byte) []util.Cell {
 	return aliveCells
 }
 
-// Requests the engine to compute the Game of Life for a given number of turns and on a given world
+/* Functions to send RPC requests to the engine */
+
 func startGameOfLife(client rpc.Client, world [][]byte, turns int) string {
 	request := stubs.RequestStart{World: world, Turns: turns}
 	response := new(stubs.ResponseStart)
@@ -76,6 +78,20 @@ func requestAliveCells(client rpc.Client) AliveCells {
 	response := new(stubs.ResponseAliveCells)
 	client.Call(stubs.AliveCellsHandler, request, response)
 	return AliveCells{NumAliveCells: response.NumAliveCells, CompletedTurns: response.CompletedTurns}
+}
+
+func requestPGM(client rpc.Client) Work {
+	request := stubs.RequestPGM{}
+	response := new(stubs.ResponsePGM)
+	client.Call(stubs.PGMHandler, request, response)
+	return Work{World: response.World, Turn: response.Turn}
+}
+
+func requestPause(client rpc.Client) string {
+	request := stubs.RequestPause{}
+	response := new(stubs.ResponsePause)
+	client.Call(stubs.PauseHandler, request, response)
+	return response.Message
 }
 
 func controller(p Params, c controllerChannels) {
@@ -101,21 +117,40 @@ func controller(p Params, c controllerChannels) {
 		}
 	}
 
+	/*
+		TODO: For the reconnect functionality, try adding a flag in main.go -reconnect, that has a boolean variable. Add another field in params
+		that says reconnect, and if it's true, request to reconnect and sort that logic out, if it's false, simply run startGameOfLife again.
+		Also, move so that requests are only made to the IO if reconnect=false, and also so that it only reads in the world if it's false.
+
+		TODO: Fix the pause logic
+	*/
+
 	// Make call to server to start Game of Life
 	startGameOfLife(*client, world, p.Turns)
 
-	// Request number of alive cells every two seconds
+	// Anonymous goroutine to allow for ticker to be run in the background along with registering keypresses
 	ticker := time.NewTicker(2 * time.Second)
-	go func() {
+	go func(paused bool) {
 		for {
 			select {
 			case <-ticker.C:
 				aliveCells := requestAliveCells(*client)
 				c.events <- AliveCellsCount{CompletedTurns: aliveCells.CompletedTurns, CellsCount: aliveCells.NumAliveCells}
+			case keyPress := <-c.keyPresses:
+				switch keyPress {
+				case 's':
+					boardState := requestPGM(*client)
+					printBoard(c, p, boardState.World, boardState.Turn)
+				case 'q':
+					close(c.events)
+				case 'p':
+					response := requestPause(*client)
+					fmt.Println(response)
+				}
 			default:
 			}
 		}
-	}()
+	}(false)
 
 	// Request results
 	resultWork := requestResults(*client)
@@ -131,4 +166,16 @@ func controller(p Params, c controllerChannels) {
 	// Close the channel to stop the SDL goroutine gracefully. Removing may cause deadlock.
 	close(c.events)
 
+}
+
+func printBoard(c controllerChannels, p Params, world [][]byte, turn int) {
+	c.ioCommand <- ioOutput
+	c.ioFilename <- fmt.Sprintf("%vx%vx%v", p.ImageHeight, p.ImageWidth, turn)
+	for y := 0; y < p.ImageHeight; y++ {
+		for x := 0; x < p.ImageWidth; x++ {
+			c.ioOutput <- world[y][x]
+		}
+	}
+	c.ioCommand <- ioCheckIdle
+	<-c.ioIdle
 }
