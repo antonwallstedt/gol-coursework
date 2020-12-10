@@ -2,10 +2,10 @@ package stubs
 
 var GameOfLifeHandler = "Engine.GameOfLife"
 var AliveCellsHandler = "Engine.AliveCells"
+var ResultsHandler = "Engine.GetResults"
 
-type Response struct {
-	World [][]byte
-	Turn  int
+type ResponseStart struct {
+	Message string
 }
 
 type ResponseAliveCells struct {
@@ -13,9 +13,16 @@ type ResponseAliveCells struct {
 	NumAliveCells  int
 }
 
-type Request struct {
+type ResponseResult struct {
+	World [][]byte
+	Turn  int
+}
+
+type RequestStart struct {
 	World [][]byte
 	Turns int
 }
+
+type RequestResult struct{}
 
 type RequestAliveCells struct{}

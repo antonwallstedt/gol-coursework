@@ -12,18 +12,19 @@ import (
 	"uk.ac.bris.cs/gameoflife/stubs"
 )
 
+// Work : used to send work to the engine and to receive work from the engine
 type Work struct {
 	World [][]byte
 	Turn  int
 }
 
 const (
+	// ALIVE : pixel value for alive cells
 	ALIVE = 255
-	DEAD  = 0
-)
 
-var numAliveCells int
-var turn int
+	// DEAD : pixel value for dead cells
+	DEAD = 0
+)
 
 func makeWorld(height, width int) [][]byte {
 	world := make([][]byte, height)
@@ -37,6 +38,7 @@ func mod(x, m int) int {
 	return (x + m) % m
 }
 
+// Calculates the number of alive neighbours around a given cell
 func calculateNeighbours(x, y int, world [][]byte) int {
 	neighbours := 0
 	height := len(world)
@@ -66,6 +68,7 @@ func getAliveCells(world [][]byte) int {
 	return aliveCells
 }
 
+// Computes one evolution of the Game of Life
 func calculateNextState(world [][]byte) [][]byte {
 	height := len(world)
 	width := len(world[0])
@@ -92,8 +95,8 @@ func calculateNextState(world [][]byte) [][]byte {
 }
 
 // Evolves the Game of Life for a given number of turns and a given world
-func gameOfLife(turns int, world [][]byte) Work {
-	turn = 0
+func gameOfLife(turns int, world [][]byte, workChan chan Work) {
+	turn := 0
 	for turn < turns {
 		world = calculateNextState(world)
 
@@ -103,30 +106,48 @@ func gameOfLife(turns int, world [][]byte) Work {
 
 		turn++
 	}
-	fmt.Println("Finished computing\n")
-	return Work{World: world, Turn: turn}
+	fmt.Println("Sending world back")
+	workChan <- Work{World: world, Turn: turn}
 }
 
-type Engine struct{}
+// Gets the results back from the work channel
+func getResults(workChan chan Work) Work {
+	result := <-workChan
+	return Work{World: result.World, Turn: result.Turn}
+}
+
+// Engine : used to run functions that respond to requests made by the controller.
+// 			Can communicate the work that's being done using a channel
+type Engine struct {
+	workChan chan Work
+}
 
 // GameOfLife : runs the game of life after getting a request from the controller
-func (e *Engine) GameOfLife(req stubs.Request, res *stubs.Response) (err error) {
+func (e *Engine) GameOfLife(req stubs.RequestStart, res *stubs.ResponseStart) (err error) {
 	if req.World == nil {
 		err = errors.New("a world must be specified")
+		res.Message = "invalid world"
 		return
 	}
-	fmt.Println("Received world")
-	work := gameOfLife(req.Turns, req.World)
-	res.Turn = work.Turn
-	res.World = work.World
+	go gameOfLife(req.Turns, req.World, e.workChan)
+	res.Message = "received world"
+	return
+}
+
+// GetResults : gets the result after all turns have been computed
+func (e *Engine) GetResults(req stubs.RequestResult, res *stubs.ResponseResult) (err error) {
+	result := getResults(e.workChan)
+	res.World = result.World
+	res.Turn = result.Turn
 	return
 }
 
 func main() {
+	workChan := make(chan Work)
 	pAddr := flag.String("port", "8030", "Port to listen on")
 	flag.Parse()
 	rand.Seed(time.Now().UnixNano())
-	rpc.Register(&Engine{})
+	rpc.Register(&Engine{workChan: workChan})
 	listener, _ := net.Listen("tcp", ":"+*pAddr)
 	defer listener.Close()
 	rpc.Accept(listener)

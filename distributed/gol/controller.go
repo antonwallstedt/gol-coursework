@@ -4,7 +4,6 @@ import (
 	"flag"
 	"fmt"
 	"net/rpc"
-	"time"
 
 	"uk.ac.bris.cs/gameoflife/stubs"
 	"uk.ac.bris.cs/gameoflife/util"
@@ -52,10 +51,17 @@ func calculateAliveCells(world [][]byte) []util.Cell {
 }
 
 // Requests the engine to compute the Game of Life for a given number of turns and on a given world
-func requestGameOfLife(client rpc.Client, world [][]byte, turns int) Work {
-	request := stubs.Request{World: world, Turns: turns}
-	response := new(stubs.Response)
+func startGameOfLife(client rpc.Client, world [][]byte, turns int) string {
+	request := stubs.RequestStart{World: world, Turns: turns}
+	response := new(stubs.ResponseStart)
 	client.Call(stubs.GameOfLifeHandler, request, response)
+	return response.Message
+}
+
+func requestResults(client rpc.Client) Work {
+	request := stubs.RequestResult{}
+	response := new(stubs.ResponseResult)
+	client.Call(stubs.ResultsHandler, request, response)
 	return Work{World: response.World, Turn: response.Turn}
 }
 
@@ -89,19 +95,11 @@ func controller(p Params, c controllerChannels) {
 		}
 	}
 
-	var numAliveCells int
-	ticker := time.NewTicker(2 * time.Second)
-	go func() {
-		select {
-		case <-ticker.C:
-			numAliveCells = requestAliveCells(*client)
-			c.events <- AliveCellsCount{CompletedTurns: 0, CellsCount: numAliveCells}
-		default:
-		}
-	}()
+	// Make call to server to start Game of Life
+	startGameOfLife(*client, world, p.Turns)
 
-	// Make call to server to process game
-	resultWork := requestGameOfLife(*client, world, p.Turns)
+	// Request results
+	resultWork := requestResults(*client)
 
 	// Calculate alive cells
 	c.events <- FinalTurnComplete{CompletedTurns: resultWork.Turn, Alive: calculateAliveCells(resultWork.World)}
