@@ -152,14 +152,15 @@ func controller(p Params, c controllerChannels) {
 					close(c.events)
 				case 'p':
 					mod := i % 2
-					i++
+
 					switch mod {
-					case 1:
-						response := requestPause(*client)
-						fmt.Println(response)
 					case 0:
-						fmt.Println("eehhehe")
+						response := requestPause(*client)
+						i++
+						fmt.Println(response)
+					case 1:
 						response := requestContinue(*client)
+						i++
 						fmt.Println(response)
 					default:
 					}
