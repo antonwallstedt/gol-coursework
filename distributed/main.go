@@ -38,11 +38,18 @@ func main() {
 		10000000000,
 		"Specify the number of turns to process. Defaults to 10000000000.")
 
+	flag.BoolVar(
+		&params.Reconnect,
+		"reconnect",
+		false,
+		"Specify if controller should try to reconnect to an already running engine. Defaults to false.")
+
 	flag.Parse()
 
 	fmt.Println("Threads:", params.Threads)
 	fmt.Println("Width:", params.ImageWidth)
 	fmt.Println("Height:", params.ImageHeight)
+	fmt.Println("Reconnect:", params.Reconnect)
 
 	keyPresses := make(chan rune, 10)
 	events := make(chan gol.Event, 1000)

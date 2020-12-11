@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"net/rpc"
+	"os"
 	"time"
 
 	"uk.ac.bris.cs/gameoflife/stubs"
@@ -94,10 +95,28 @@ func requestPause(client rpc.Client) string {
 	return response.Message
 }
 
+func requestStop(client rpc.Client) string {
+	request := stubs.RequestStop{}
+	response := new(stubs.ResponseStop)
+	client.Call(stubs.StopHandler, request, response)
+	return response.Message
+}
+
+func requestStatus(client rpc.Client) bool {
+	request := stubs.RequestStatus{}
+	response := new(stubs.ResponseStatus)
+	client.Call(stubs.StatusHandler, request, response)
+	return response.Running
+}
+
+func requestReconnect(client rpc.Client) string {
+	request := stubs.RequestReconnect{}
+	response := new(stubs.ResponseReconnect)
+	client.Call(stubs.ReconnectHandler, request, response)
+	return response.Message
+}
+
 func controller(p Params, c controllerChannels) {
-	// Request IO to read image file
-	c.ioCommand <- ioInput
-	c.ioFilename <- fmt.Sprintf("%dx%d", p.ImageHeight, p.ImageWidth)
 
 	// Dial server
 	var serverIP string
@@ -109,24 +128,40 @@ func controller(p Params, c controllerChannels) {
 	client, _ := rpc.Dial("tcp", serverIP)
 	defer client.Close()
 
-	// Load world in
-	world := makeWorld(p.ImageHeight, p.ImageWidth)
-	for y := range world {
-		for x := range world {
-			world[y][x] = <-c.ioInput
+	engineRunning := requestStatus(*client)
+	if p.Reconnect == false {
+		// Check if engine is already running, if it is stop it and load in the initial board state and start processing from the beginning
+		if engineRunning == true {
+			fmt.Println(requestStop(*client))
+		}
+
+		// Request IO to read image file
+		c.ioCommand <- ioInput
+		c.ioFilename <- fmt.Sprintf("%dx%d", p.ImageHeight, p.ImageWidth)
+
+		// Load world in
+		world := makeWorld(p.ImageHeight, p.ImageWidth)
+		for y := range world {
+			for x := range world {
+				world[y][x] = <-c.ioInput
+			}
+		}
+
+		// Make call to server to start Game of Life
+		startGameOfLife(*client, world, p.Turns)
+	} else {
+		if engineRunning == false {
+			fmt.Println("Engine is not currently processing Game of Life, cannot reconnect. Exiting...")
+			os.Exit(0)
+		} else {
+			fmt.Println("I'm here")
+			fmt.Println(requestReconnect(*client))
 		}
 	}
 
 	/*
-		TODO: For the reconnect functionality, try adding a flag in main.go -reconnect, that has a boolean variable. Add another field in params
-		that says reconnect, and if it's true, request to reconnect and sort that logic out, if it's false, simply run startGameOfLife again.
-		Also, move so that requests are only made to the IO if reconnect=false, and also so that it only reads in the world if it's false.
-
 		TODO: Fix the pause logic
 	*/
-
-	// Make call to server to start Game of Life
-	startGameOfLife(*client, world, p.Turns)
 
 	// Anonymous goroutine to allow for ticker to be run in the background along with registering keypresses
 	ticker := time.NewTicker(2 * time.Second)
@@ -144,13 +179,22 @@ func controller(p Params, c controllerChannels) {
 				case 'q':
 					close(c.events)
 				case 'p':
-					response := requestPause(*client)
-					fmt.Println(response)
+					if paused == false {
+						fmt.Println(requestPause(*client))
+						paused = true
+					} else {
+						fmt.Println(requestPause(*client))
+					}
 				}
 			default:
 			}
 		}
 	}(false)
+
+	/*
+		This RPC call is blocking the computation. It is waiting to receive a value from the engine but because it is never ending it keeps waiting for a result.
+		Try and find a way to turn this into a non-blocking call instead. Or find another way of getting the results back from the engine...
+	*/
 
 	// Request results
 	resultWork := requestResults(*client)

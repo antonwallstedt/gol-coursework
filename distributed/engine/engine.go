@@ -35,8 +35,11 @@ const (
 	requestAliveCells = iota
 	requestPgm
 	requestPause
+	requestResume
+	requestStop
 )
 
+var running = false
 var globalWorld [][]byte = nil
 
 func makeWorld(height, width int) [][]byte {
@@ -110,7 +113,8 @@ func calculateNextState(world [][]byte) [][]byte {
 // Evolves the Game of Life for a given number of turns and a given world
 func gameOfLife(turns int, world [][]byte, workChan chan Work, cmdChan chan int, aliveCellsChan chan AliveCells, responseMsgChan chan string, paused bool) {
 	turn := 0
-	for turn < turns {
+	running = true
+	for (turn < turns) && running {
 		select {
 		case cmd := <-cmdChan:
 			switch cmd {
@@ -126,7 +130,7 @@ func gameOfLife(turns int, world [][]byte, workChan chan Work, cmdChan chan int,
 					for paused {
 						select {
 						case c := <-cmdChan:
-							if c == requestPause {
+							if c == requestResume {
 								responseMsgChan <- "Continuing"
 								paused = false
 							}
@@ -134,6 +138,9 @@ func gameOfLife(turns int, world [][]byte, workChan chan Work, cmdChan chan int,
 						}
 					}
 				}
+			case requestStop:
+				fmt.Println("Stopping computation")
+				running = false
 			}
 		default:
 		}
@@ -147,8 +154,10 @@ func gameOfLife(turns int, world [][]byte, workChan chan Work, cmdChan chan int,
 		turn++
 
 	}
-	fmt.Println("Sending world back")
-	workChan <- Work{World: world, Turn: turn}
+	if running == true {
+		fmt.Println("Sending world back")
+		workChan <- Work{World: world, Turn: turn}
+	}
 }
 
 // Gets the results back from the work channel
@@ -177,6 +186,15 @@ func pause(cmdChan chan int, responseMsgChan chan string) string {
 	return response
 }
 
+func stop(cmdChan chan int) string {
+	cmdChan <- requestStop
+	return "Stopping engine"
+}
+
+func reconnect() string {
+	return "Controller reconnected to engine"
+}
+
 // Engine : used to run functions that respond to requests made by the controller.
 // 			Can communicate the work that's being done using a channel
 type Engine struct {
@@ -198,6 +216,7 @@ func (e *Engine) GameOfLife(req stubs.RequestStart, res *stubs.ResponseStart) (e
 	} else {
 
 	}
+	fmt.Println("Starting game of life")
 	go gameOfLife(req.Turns, world, e.workChan, e.cmdChan, e.aliveCellsChan, e.responseMsgChan, false)
 	res.Message = "received world"
 	return
@@ -231,6 +250,25 @@ func (e *Engine) GetPGM(req stubs.RequestPGM, res *stubs.ResponsePGM) (err error
 func (e *Engine) Pause(req stubs.RequestPause, res *stubs.ResponsePause) (err error) {
 	response := pause(e.cmdChan, e.responseMsgChan)
 	res.Message = response
+	return
+}
+
+// Stop : stops the computation
+func (e *Engine) Stop(req stubs.RequestStop, res *stubs.ResponseStop) (err error) {
+	res.Message = stop(e.cmdChan)
+	return
+}
+
+// Status : checks if engine is already running
+func (e *Engine) Status(req stubs.RequestStatus, res *stubs.ResponseStatus) (err error) {
+	status := running
+	res.Running = status
+	return
+}
+
+// Reconnect : reconnects a controller to the engine while it's processing work
+func (e *Engine) Reconnect(req stubs.RequestReconnect, res *stubs.ResponseReconnect) (err error) {
+	res.Message = reconnect()
 	return
 }
 
