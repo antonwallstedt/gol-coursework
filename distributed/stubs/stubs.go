@@ -5,6 +5,7 @@ var AliveCellsHandler = "Engine.AliveCells"
 var ResultsHandler = "Engine.GetResults"
 var PGMHandler = "Engine.GetPGM"
 var PauseHandler = "Engine.Pause"
+var ContinueHandler = "Engine.Continue"
 
 type ResponseStart struct {
 	Message string
@@ -14,7 +15,11 @@ type ResponseAliveCells struct {
 	CompletedTurns int
 	NumAliveCells  int
 }
-
+type RequestContinue struct {
+}
+type ResponceContinue struct {
+	Message string
+}
 type ResponseResult struct {
 	World [][]byte
 	Turn  int

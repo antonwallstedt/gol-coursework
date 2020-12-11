@@ -93,6 +93,12 @@ func requestPause(client rpc.Client) string {
 	client.Call(stubs.PauseHandler, request, response)
 	return response.Message
 }
+func requestContinue(client rpc.Client) string {
+	request := stubs.RequestContinue{}
+	response := new(stubs.ResponceContinue)
+	client.Call(stubs.ContinueHandler, request, response)
+	return response.Message
+}
 
 func controller(p Params, c controllerChannels) {
 	// Request IO to read image file
@@ -130,6 +136,7 @@ func controller(p Params, c controllerChannels) {
 
 	// Anonymous goroutine to allow for ticker to be run in the background along with registering keypresses
 	ticker := time.NewTicker(2 * time.Second)
+	i := 0
 	go func(paused bool) {
 		for {
 			select {
@@ -144,8 +151,19 @@ func controller(p Params, c controllerChannels) {
 				case 'q':
 					close(c.events)
 				case 'p':
-					response := requestPause(*client)
-					fmt.Println(response)
+					mod := i % 2
+					i++
+					switch mod {
+					case 1:
+						response := requestPause(*client)
+						fmt.Println(response)
+					case 0:
+						fmt.Println("eehhehe")
+						response := requestContinue(*client)
+						fmt.Println(response)
+					default:
+					}
+
 				}
 			default:
 			}

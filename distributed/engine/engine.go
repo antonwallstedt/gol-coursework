@@ -35,6 +35,7 @@ const (
 	requestAliveCells = iota
 	requestPgm
 	requestPause
+	requestContinue
 )
 
 var globalWorld [][]byte = nil
@@ -123,14 +124,16 @@ func gameOfLife(turns int, world [][]byte, workChan chan Work, cmdChan chan int,
 					responseMsg := fmt.Sprintf("Pausing on turn %d", turn)
 					responseMsgChan <- responseMsg
 					paused = true
-					for paused {
+					for paused == true {
 						select {
 						case c := <-cmdChan:
-							if c == requestPause {
+
+							if c == requestContinue {
+								fmt.Println("heheheheheh")
 								responseMsgChan <- "Continuing"
 								paused = false
+								break
 							}
-						default:
 						}
 					}
 				}
@@ -173,6 +176,11 @@ func getPGM(workChan chan Work, cmdChan chan int) Work {
 
 func pause(cmdChan chan int, responseMsgChan chan string) string {
 	cmdChan <- requestPause
+	response := <-responseMsgChan
+	return response
+}
+func continueOP(cmdChan chan int, responseMsgChan chan string) string {
+	cmdChan <- requestContinue
 	response := <-responseMsgChan
 	return response
 }
@@ -230,6 +238,13 @@ func (e *Engine) GetPGM(req stubs.RequestPGM, res *stubs.ResponsePGM) (err error
 // Pause : pauses the computation
 func (e *Engine) Pause(req stubs.RequestPause, res *stubs.ResponsePause) (err error) {
 	response := pause(e.cmdChan, e.responseMsgChan)
+	res.Message = response
+	return
+}
+
+// Continue : continue the computation
+func (e *Engine) Continue(req stubs.RequestContinue, res *stubs.ResponceContinue) (err error) {
+	response := continueOP(e.cmdChan, e.responseMsgChan)
 	res.Message = response
 	return
 }
