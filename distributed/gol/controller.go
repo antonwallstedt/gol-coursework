@@ -136,7 +136,7 @@ func controller(p Params, c controllerChannels) {
 
 	// Anonymous goroutine to allow for ticker to be run in the background along with registering keypresses
 	ticker := time.NewTicker(2 * time.Second)
-	i := 0
+	// i := 0
 	go func(paused bool) {
 		for {
 			select {
@@ -151,19 +151,28 @@ func controller(p Params, c controllerChannels) {
 				case 'q':
 					close(c.events)
 				case 'p':
-					mod := i % 2
+					fmt.Println("pausing")
+					for {
+						tempPress := <-c.keyPresses
+						if tempPress == 'p' {
+							fmt.Println("resume")
+							break
+						}
 
-					switch mod {
-					case 0:
-						response := requestPause(*client)
-						i++
-						fmt.Println(response)
-					case 1:
-						response := requestContinue(*client)
-						i++
-						fmt.Println(response)
-					default:
 					}
+					// mod := i % 2
+
+					// switch mod {
+					// case 0:
+					// 	response := requestPause(*client)
+					// 	i++
+					// 	fmt.Println(response)
+					// case 1:
+					// 	response := requestContinue(*client)
+					// 	i++
+					// 	fmt.Println(response)
+					// default:
+					// }
 
 				}
 			default:
