@@ -6,6 +6,9 @@ var ResultsHandler = "Engine.GetResults"
 var PGMHandler = "Engine.GetPGM"
 var PauseHandler = "Engine.Pause"
 var ContinueHandler = "Engine.Continue"
+var StopHandler = "Engine.Stop"
+var StatusHandler = "Engine.Status"
+var ReconnectHandler = "Engine.Reconnect"
 
 type ResponseStart struct {
 	Message string
