@@ -151,29 +151,17 @@ func controller(p Params, c controllerChannels) {
 				case 'q':
 					close(c.events)
 				case 'p':
-					fmt.Println("pausing")
+					response := requestPause(*client)
+					fmt.Println(response)
 					for {
 						tempPress := <-c.keyPresses
 						if tempPress == 'p' {
-							fmt.Println("resume")
+							response := requestContinue(*client)
+							fmt.Println(response)
 							break
 						}
 
 					}
-					// mod := i % 2
-
-					// switch mod {
-					// case 0:
-					// 	response := requestPause(*client)
-					// 	i++
-					// 	fmt.Println(response)
-					// case 1:
-					// 	response := requestContinue(*client)
-					// 	i++
-					// 	fmt.Println(response)
-					// default:
-					// }
-
 				}
 			default:
 			}
