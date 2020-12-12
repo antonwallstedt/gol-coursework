@@ -122,7 +122,6 @@ func requestReconnect(client rpc.Client) string {
 }
 
 func controller(p Params, c controllerChannels) {
-	// Dial server
 
 	// Dial server
 	var serverIP string
@@ -173,7 +172,9 @@ func controller(p Params, c controllerChannels) {
 			select {
 			case <-ticker.C:
 				aliveCells := requestAliveCells(*client)
+
 				c.events <- AliveCellsCount{CompletedTurns: aliveCells.CompletedTurns, CellsCount: aliveCells.NumAliveCells}
+
 			case keyPress := <-c.keyPresses:
 				switch keyPress {
 				case 's':
@@ -211,6 +212,7 @@ func controller(p Params, c controllerChannels) {
 
 	c.events <- StateChange{resultWork.Turn, Quitting}
 	// Close the channel to stop the SDL goroutine gracefully. Removing may cause deadlock.
+
 	close(c.events)
 
 }
