@@ -35,6 +35,7 @@ const (
 	requestAliveCells = iota
 	requestPgm
 	requestPause
+	requestStop
 	requestContinue
 )
 
@@ -110,6 +111,7 @@ func calculateNextState(world [][]byte) [][]byte {
 
 // Evolves the Game of Life for a given number of turns and a given world
 func gameOfLife(turns int, world [][]byte, workChan chan Work, cmdChan chan int, aliveCellsChan chan AliveCells, responseMsgChan chan string, paused bool) {
+
 	turn := 0
 	for turn < turns {
 		select {
@@ -137,7 +139,12 @@ func gameOfLife(turns int, world [][]byte, workChan chan Work, cmdChan chan int,
 						}
 					}
 				}
+			case requestStop:
+				fmt.Println("Stopping computation")
+				running = false
+
 			}
+
 		default:
 		}
 
@@ -150,8 +157,10 @@ func gameOfLife(turns int, world [][]byte, workChan chan Work, cmdChan chan int,
 		turn++
 
 	}
-	fmt.Println("Sending world back")
-	workChan <- Work{World: world, Turn: turn}
+	if running == true {
+		fmt.Println("Sending world back")
+		workChan <- Work{World: world, Turn: turn}
+	}
 }
 
 // Gets the results back from the work channel
@@ -183,6 +192,14 @@ func continueOP(cmdChan chan int, responseMsgChan chan string) string {
 	cmdChan <- requestContinue
 	response := <-responseMsgChan
 	return response
+}
+func stop(cmdChan chan int) string {
+	cmdChan <- requestStop
+	return "Stopping engine"
+}
+
+func reconnect() string {
+	return "Controller reconnected to engine"
 }
 
 // Engine : used to run functions that respond to requests made by the controller.
@@ -246,6 +263,25 @@ func (e *Engine) Pause(req stubs.RequestPause, res *stubs.ResponsePause) (err er
 func (e *Engine) Continue(req stubs.RequestContinue, res *stubs.ResponceContinue) (err error) {
 	response := continueOP(e.cmdChan, e.responseMsgChan)
 	res.Message = response
+	return
+}
+
+// Stop : stops the computation
+func (e *Engine) Stop(req stubs.RequestStop, res *stubs.ResponseStop) (err error) {
+	res.Message = stop(e.cmdChan)
+	return
+}
+
+// Status : checks if engine is already running
+func (e *Engine) Status(req stubs.RequestStatus, res *stubs.ResponseStatus) (err error) {
+	status := running
+	res.Running = status
+	return
+}
+
+// Reconnect : reconnects a controller to the engine while it's processing work
+func (e *Engine) Reconnect(req stubs.RequestReconnect, res *stubs.ResponseReconnect) (err error) {
+	res.Message = reconnect()
 	return
 }
 
