@@ -39,6 +39,7 @@ const (
 	requestContinue
 )
 
+var running = false
 var globalWorld [][]byte = nil
 
 func makeWorld(height, width int) [][]byte {
@@ -113,7 +114,8 @@ func calculateNextState(world [][]byte) [][]byte {
 func gameOfLife(turns int, world [][]byte, workChan chan Work, cmdChan chan int, aliveCellsChan chan AliveCells, responseMsgChan chan string, paused bool) {
 
 	turn := 0
-	for turn < turns {
+	running = true
+	for (turn < turns) && running {
 		select {
 		case cmd := <-cmdChan:
 			switch cmd {
