@@ -123,6 +123,8 @@ func requestReconnect(client rpc.Client) string {
 
 func controller(p Params, c controllerChannels) {
 	// Dial server
+
+	// Dial server
 	var serverIP string
 	if flag.Lookup("server") != nil {
 		serverIP = flag.Lookup("server").Value.String()
@@ -162,17 +164,6 @@ func controller(p Params, c controllerChannels) {
 			fmt.Println(requestReconnect(*client))
 		}
 	}
-
-	/*
-		TODO: For the reconnect functionality, try adding a flag in main.go -reconnect, that has a boolean variable. Add another field in params
-		that says reconnect, and if it's true, request to reconnect and sort that logic out, if it's false, simply run startGameOfLife again.
-		Also, move so that requests are only made to the IO if reconnect=false, and also so that it only reads in the world if it's false.
-
-		TODO: Fix the pause logic
-	*/
-
-	// Make call to server to start Game of Life
-	startGameOfLife(*client, world, p.Turns)
 
 	// Anonymous goroutine to allow for ticker to be run in the background along with registering keypresses
 	ticker := time.NewTicker(2 * time.Second)
