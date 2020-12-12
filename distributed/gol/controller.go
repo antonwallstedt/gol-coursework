@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"net/rpc"
+	"os"
 	"time"
 
 	"uk.ac.bris.cs/gameoflife/stubs"
@@ -99,12 +100,28 @@ func requestContinue(client rpc.Client) string {
 	client.Call(stubs.ContinueHandler, request, response)
 	return response.Message
 }
+func requestStop(client rpc.Client) string {
+	request := stubs.RequestStop{}
+	response := new(stubs.ResponseStop)
+	client.Call(stubs.StopHandler, request, response)
+	return response.Message
+}
+
+func requestStatus(client rpc.Client) bool {
+	request := stubs.RequestStatus{}
+	response := new(stubs.ResponseStatus)
+	client.Call(stubs.StatusHandler, request, response)
+	return response.Running
+}
+
+func requestReconnect(client rpc.Client) string {
+	request := stubs.RequestReconnect{}
+	response := new(stubs.ResponseReconnect)
+	client.Call(stubs.ReconnectHandler, request, response)
+	return response.Message
+}
 
 func controller(p Params, c controllerChannels) {
-	// Request IO to read image file
-	c.ioCommand <- ioInput
-	c.ioFilename <- fmt.Sprintf("%dx%d", p.ImageHeight, p.ImageWidth)
-
 	// Dial server
 	var serverIP string
 	if flag.Lookup("server") != nil {
@@ -115,11 +132,34 @@ func controller(p Params, c controllerChannels) {
 	client, _ := rpc.Dial("tcp", serverIP)
 	defer client.Close()
 
-	// Load world in
-	world := makeWorld(p.ImageHeight, p.ImageWidth)
-	for y := range world {
-		for x := range world {
-			world[y][x] = <-c.ioInput
+	engineRunning := requestStatus(*client)
+	if p.Reconnect == false {
+		// Check if engine is already running, if it is stop it and load in the initial board state and start processing from the beginning
+		if engineRunning == true {
+			fmt.Println(requestStop(*client))
+		}
+
+		// Request IO to read image file
+		c.ioCommand <- ioInput
+		c.ioFilename <- fmt.Sprintf("%dx%d", p.ImageHeight, p.ImageWidth)
+
+		// Load world in
+		world := makeWorld(p.ImageHeight, p.ImageWidth)
+		for y := range world {
+			for x := range world {
+				world[y][x] = <-c.ioInput
+			}
+		}
+
+		// Make call to server to start Game of Life
+		startGameOfLife(*client, world, p.Turns)
+	} else {
+		if engineRunning == false {
+			fmt.Println("Engine is not currently processing Game of Life, cannot reconnect. Exiting...")
+			os.Exit(0)
+		} else {
+			fmt.Println("I'm here")
+			fmt.Println(requestReconnect(*client))
 		}
 	}
 
