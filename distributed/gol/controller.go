@@ -4,7 +4,6 @@ import (
 	"flag"
 	"fmt"
 	"net/rpc"
-	"time"
 
 	"uk.ac.bris.cs/gameoflife/stubs"
 	"uk.ac.bris.cs/gameoflife/util"
@@ -129,7 +128,7 @@ func controller(p Params, c controllerChannels) {
 	startGameOfLife(*client, world, p.Turns)
 
 	// Anonymous goroutine to allow for ticker to be run in the background along with registering keypresses
-	ticker := time.NewTicker(2 * time.Second)
+	/*ticker := time.NewTicker(2 * time.Second)
 	go func(paused bool) {
 		for {
 			select {
@@ -150,7 +149,7 @@ func controller(p Params, c controllerChannels) {
 			default:
 			}
 		}
-	}(false)
+	}(false)*/
 
 	// Request results
 	resultWork := requestResults(*client)
