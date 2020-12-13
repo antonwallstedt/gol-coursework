@@ -160,13 +160,9 @@ func controller(p Params, c controllerChannels) {
 		}
 	}
 
-	/*
-		TODO: Fix the pause logic
-	*/
-
 	// Anonymous goroutine to allow for ticker to be run in the background along with registering keypresses
 	ticker := time.NewTicker(2 * time.Second)
-	go func() {
+	go func(paused bool) {
 		for {
 			select {
 			case <-ticker.C:
@@ -180,13 +176,16 @@ func controller(p Params, c controllerChannels) {
 				case 'q':
 					close(c.events)
 				case 'p':
-					fmt.Println(requestPause(*client))
-					for {
+					if paused == false {
+						fmt.Println("\n" + requestPause(*client))
+						paused = true
+					}
+					for paused {
 						select {
-						case keyPress := <-c.keyPresses:
-							if keyPress == 'p' {
-								fmt.Println(requestPause(*client))
-								break
+						case tempKey := <-c.keyPresses:
+							if tempKey == 'p' {
+								fmt.Println(requestPause(*client) + "\n")
+								paused = false
 							}
 						default:
 						}
@@ -195,15 +194,11 @@ func controller(p Params, c controllerChannels) {
 			default:
 			}
 		}
-	}()
-
-	/*
-		This RPC call is blocking the computation. It is waiting to receive a value from the engine but because it is never ending it keeps waiting for a result.
-		Try and find a way to turn this into a non-blocking call instead. Or find another way of getting the results back from the engine...
-	*/
+	}(false)
 
 	// Request results
 	resultWork := requestResults(*client)
+	ticker.Stop()
 	printBoard(c, p, resultWork.World, resultWork.Turn)
 
 	// Calculate alive cells

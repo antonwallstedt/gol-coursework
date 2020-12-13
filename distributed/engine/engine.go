@@ -35,7 +35,6 @@ const (
 	requestAliveCells = iota
 	requestPgm
 	requestPause
-	requestResume
 	requestStop
 )
 
@@ -129,11 +128,10 @@ func gameOfLife(turns int, world [][]byte, workChan chan Work, cmdChan chan int,
 					for paused {
 						select {
 						case c := <-cmdChan:
-							if c == requestResume {
+							if c == requestPause {
 								responseMsgChan <- "Continuing"
 								paused = false
 							}
-						default:
 						}
 					}
 				}
@@ -146,15 +144,14 @@ func gameOfLife(turns int, world [][]byte, workChan chan Work, cmdChan chan int,
 
 		world = calculateNextState(world)
 
-		if turn%100 == 0 && turn != 0 {
+		if turn%10 == 0 && turn != 0 {
 			fmt.Println("Turn ", turn, " computed")
 		}
-
 		turn++
-
 	}
-	if running == true {
-		fmt.Println("Sending world back")
+
+	if running == true { // only send back if the engine has been running and hasn't been stopped by the controller
+		fmt.Println("Sending world back\n")
 		workChan <- Work{World: world, Turn: turn}
 		running = false
 	}
@@ -270,15 +267,21 @@ func (e *Engine) Reconnect(req stubs.RequestReconnect, res *stubs.ResponseReconn
 	return
 }
 
+var engine Engine
+
 func main() {
 	workChan := make(chan Work)
 	aliveCellsChan := make(chan AliveCells)
 	cmdChan := make(chan int)
 	responseMsgChan := make(chan string)
+	engine.workChan = workChan
+	engine.aliveCellsChan = aliveCellsChan
+	engine.cmdChan = cmdChan
+	engine.responseMsgChan = responseMsgChan
 	pAddr := flag.String("port", "8030", "Port to listen on")
 	flag.Parse()
 	rand.Seed(time.Now().UnixNano())
-	rpc.Register(&Engine{workChan: workChan, aliveCellsChan: aliveCellsChan, cmdChan: cmdChan, responseMsgChan: responseMsgChan})
+	rpc.Register(&engine)
 	listener, _ := net.Listen("tcp", ":"+*pAddr)
 	defer listener.Close()
 	rpc.Accept(listener)
