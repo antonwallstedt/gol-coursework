@@ -129,8 +129,9 @@ func controller(p Params, c controllerChannels) {
 	defer client.Close()
 
 	engineRunning := requestStatus(*client)
-	if p.Reconnect == false {
-		// Check if engine is already running, if it is stop it and load in the initial board state and start processing from the beginning
+	if p.Reconnect != true {
+
+		// Check if engine is already running and processing GoL, if it is stop it and load in the initial board state and start processing from the beginning
 		if engineRunning == true {
 			fmt.Println(requestStop(*client))
 		}
@@ -149,12 +150,12 @@ func controller(p Params, c controllerChannels) {
 
 		// Make call to server to start Game of Life
 		startGameOfLife(*client, world, p.Turns)
+
 	} else {
 		if engineRunning == false {
 			fmt.Println("Engine is not currently processing Game of Life, cannot reconnect. Exiting...")
 			os.Exit(0)
 		} else {
-			fmt.Println("I'm here")
 			fmt.Println(requestReconnect(*client))
 		}
 	}
@@ -165,7 +166,7 @@ func controller(p Params, c controllerChannels) {
 
 	// Anonymous goroutine to allow for ticker to be run in the background along with registering keypresses
 	ticker := time.NewTicker(2 * time.Second)
-	go func(paused bool) {
+	go func() {
 		for {
 			select {
 			case <-ticker.C:
@@ -179,17 +180,22 @@ func controller(p Params, c controllerChannels) {
 				case 'q':
 					close(c.events)
 				case 'p':
-					if paused == false {
-						fmt.Println(requestPause(*client))
-						paused = true
-					} else {
-						fmt.Println(requestPause(*client))
+					fmt.Println(requestPause(*client))
+					for {
+						select {
+						case keyPress := <-c.keyPresses:
+							if keyPress == 'p' {
+								fmt.Println(requestPause(*client))
+								break
+							}
+						default:
+						}
 					}
 				}
 			default:
 			}
 		}
-	}(false)
+	}()
 
 	/*
 		This RPC call is blocking the computation. It is waiting to receive a value from the engine but because it is never ending it keeps waiting for a result.
@@ -198,7 +204,7 @@ func controller(p Params, c controllerChannels) {
 
 	// Request results
 	resultWork := requestResults(*client)
-	//printBoard(c, p, resultWork.World, resultWork.Turn)
+	printBoard(c, p, resultWork.World, resultWork.Turn)
 
 	// Calculate alive cells
 	c.events <- FinalTurnComplete{CompletedTurns: resultWork.Turn, Alive: calculateAliveCells(resultWork.World)}
@@ -210,7 +216,6 @@ func controller(p Params, c controllerChannels) {
 	c.events <- StateChange{resultWork.Turn, Quitting}
 	// Close the channel to stop the SDL goroutine gracefully. Removing may cause deadlock.
 	close(c.events)
-
 }
 
 func printBoard(c controllerChannels, p Params, world [][]byte, turn int) {

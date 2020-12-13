@@ -40,7 +40,6 @@ const (
 )
 
 var running = false
-var globalWorld [][]byte = nil
 
 func makeWorld(height, width int) [][]byte {
 	world := make([][]byte, height)
@@ -157,6 +156,7 @@ func gameOfLife(turns int, world [][]byte, workChan chan Work, cmdChan chan int,
 	if running == true {
 		fmt.Println("Sending world back")
 		workChan <- Work{World: world, Turn: turn}
+		running = false
 	}
 }
 
@@ -187,8 +187,11 @@ func pause(cmdChan chan int, responseMsgChan chan string) string {
 }
 
 func stop(cmdChan chan int) string {
-	cmdChan <- requestStop
-	return "Stopping engine"
+	if running == true {
+		cmdChan <- requestStop
+		return "Stopping engine"
+	}
+	return "Engine is not running"
 }
 
 func reconnect() string {
@@ -206,18 +209,13 @@ type Engine struct {
 
 // GameOfLife : runs the game of life after getting a request from the controller
 func (e *Engine) GameOfLife(req stubs.RequestStart, res *stubs.ResponseStart) (err error) {
-	var world [][]byte
 	if req.World == nil {
 		err = errors.New("a world must be specified")
 		res.Message = "invalid world"
 		return
-	} else if globalWorld == nil {
-		world = req.World
-	} else {
-
 	}
 	fmt.Println("Starting game of life")
-	go gameOfLife(req.Turns, world, e.workChan, e.cmdChan, e.aliveCellsChan, e.responseMsgChan, false)
+	go gameOfLife(req.Turns, req.World, e.workChan, e.cmdChan, e.aliveCellsChan, e.responseMsgChan, false)
 	res.Message = "received world"
 	return
 }
