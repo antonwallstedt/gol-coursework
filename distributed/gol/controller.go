@@ -116,6 +116,18 @@ func requestReconnect(client rpc.Client) string {
 	return response.Message
 }
 
+/*
+	TODO: fix race condition. The reason behind the race condition is that at the end of the controller
+	we make an RPC call to get the result back, and this RPC call will only terminate once we get a response.
+	Meanwhile it's waiting for a response, if the computation at the engine is taking longer than two seconds
+	the ticker will cause another rpc call to be made, while we're already waiting for a response. This will
+	cause a data race.
+
+	There's one workaround that I can think of, create a new channel that the ticker, every two seconds, sends the
+	turn it's currently on down, and if this turn is within 50 turns of p.Turns, we send a request to get the
+	results and we stop the ticker.
+*/
+
 func controller(p Params, c controllerChannels) {
 
 	// Dial server
