@@ -198,6 +198,7 @@ func controller(p Params, c controllerChannels) {
 
 	// Request results
 	resultWork := requestResults(*client)
+	//printBoard(c, p, resultWork.World, resultWork.Turn)
 
 	// Calculate alive cells
 	c.events <- FinalTurnComplete{CompletedTurns: resultWork.Turn, Alive: calculateAliveCells(resultWork.World)}
