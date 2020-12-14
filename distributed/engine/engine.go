@@ -35,9 +35,10 @@ const (
 	requestAliveCells = iota
 	requestPgm
 	requestPause
+	requestStop
 )
 
-var globalWorld [][]byte = nil
+var running = false
 
 func makeWorld(height, width int) [][]byte {
 	world := make([][]byte, height)
@@ -110,7 +111,8 @@ func calculateNextState(world [][]byte) [][]byte {
 // Evolves the Game of Life for a given number of turns and a given world
 func gameOfLife(turns int, world [][]byte, workChan chan Work, cmdChan chan int, aliveCellsChan chan AliveCells, responseMsgChan chan string, paused bool) {
 	turn := 0
-	for turn < turns {
+	running = true
+	for (turn < turns) && running {
 		select {
 		case cmd := <-cmdChan:
 			switch cmd {
@@ -130,25 +132,29 @@ func gameOfLife(turns int, world [][]byte, workChan chan Work, cmdChan chan int,
 								responseMsgChan <- "Continuing"
 								paused = false
 							}
-						default:
 						}
 					}
 				}
+			case requestStop:
+				fmt.Println("Stopping computation")
+				running = false
 			}
 		default:
 		}
 
 		world = calculateNextState(world)
 
-		if turn%100 == 0 && turn != 0 {
+		if turn%10 == 0 && turn != 0 {
 			fmt.Println("Turn ", turn, " computed")
 		}
-
 		turn++
-
 	}
-	fmt.Println("Sending world back")
-	workChan <- Work{World: world, Turn: turn}
+
+	if running == true { // only send back if the engine has been running and hasn't been stopped by the controller
+		fmt.Println("Sending world back\n")
+		workChan <- Work{World: world, Turn: turn}
+		running = false
+	}
 }
 
 // Gets the results back from the work channel
@@ -177,6 +183,18 @@ func pause(cmdChan chan int, responseMsgChan chan string) string {
 	return response
 }
 
+func stop(cmdChan chan int) string {
+	if running == true {
+		cmdChan <- requestStop
+		return "Stopping engine"
+	}
+	return "Engine is not running"
+}
+
+func reconnect() string {
+	return "Controller reconnected to engine"
+}
+
 // Engine : used to run functions that respond to requests made by the controller.
 // 			Can communicate the work that's being done using a channel
 type Engine struct {
@@ -188,17 +206,13 @@ type Engine struct {
 
 // GameOfLife : runs the game of life after getting a request from the controller
 func (e *Engine) GameOfLife(req stubs.RequestStart, res *stubs.ResponseStart) (err error) {
-	var world [][]byte
 	if req.World == nil {
 		err = errors.New("a world must be specified")
 		res.Message = "invalid world"
 		return
-	} else if globalWorld == nil {
-		world = req.World
-	} else {
-
 	}
-	go gameOfLife(req.Turns, world, e.workChan, e.cmdChan, e.aliveCellsChan, e.responseMsgChan, false)
+	fmt.Println("Starting game of life")
+	go gameOfLife(req.Turns, req.World, e.workChan, e.cmdChan, e.aliveCellsChan, e.responseMsgChan, false)
 	res.Message = "received world"
 	return
 }
@@ -234,15 +248,40 @@ func (e *Engine) Pause(req stubs.RequestPause, res *stubs.ResponsePause) (err er
 	return
 }
 
+// Stop : stops the computation
+func (e *Engine) Stop(req stubs.RequestStop, res *stubs.ResponseStop) (err error) {
+	res.Message = stop(e.cmdChan)
+	return
+}
+
+// Status : checks if engine is already running
+func (e *Engine) Status(req stubs.RequestStatus, res *stubs.ResponseStatus) (err error) {
+	status := running
+	res.Running = status
+	return
+}
+
+// Reconnect : reconnects a controller to the engine while it's processing work
+func (e *Engine) Reconnect(req stubs.RequestReconnect, res *stubs.ResponseReconnect) (err error) {
+	res.Message = reconnect()
+	return
+}
+
+var engine Engine
+
 func main() {
 	workChan := make(chan Work)
 	aliveCellsChan := make(chan AliveCells)
 	cmdChan := make(chan int)
 	responseMsgChan := make(chan string)
+	engine.workChan = workChan
+	engine.aliveCellsChan = aliveCellsChan
+	engine.cmdChan = cmdChan
+	engine.responseMsgChan = responseMsgChan
 	pAddr := flag.String("port", "8030", "Port to listen on")
 	flag.Parse()
 	rand.Seed(time.Now().UnixNano())
-	rpc.Register(&Engine{workChan: workChan, aliveCellsChan: aliveCellsChan, cmdChan: cmdChan, responseMsgChan: responseMsgChan})
+	rpc.Register(&engine)
 	listener, _ := net.Listen("tcp", ":"+*pAddr)
 	defer listener.Close()
 	rpc.Accept(listener)

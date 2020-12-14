@@ -6,6 +6,12 @@ type Params struct {
 	Threads     int
 	ImageWidth  int
 	ImageHeight int
+	Reconnect   bool
+}
+
+// ConnectionParams contains information about how the connection should be done when the controller and server is started.
+type ConnectionParams struct {
+	Reconnect bool
 }
 
 // Run starts the processing of Game of Life. It should initialise channels and goroutines.
