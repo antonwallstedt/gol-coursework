@@ -67,11 +67,11 @@ func startGameOfLife(client rpc.Client, world [][]byte, turns int) string {
 	return response.Message
 }
 
-func requestResults(client rpc.Client) Work {
+func requestResults(client rpc.Client, resultsChan chan Work) {
 	request := stubs.RequestResult{}
 	response := new(stubs.ResponseResult)
 	client.Call(stubs.ResultsHandler, request, response)
-	return Work{World: response.World, Turn: response.Turn}
+	resultsChan <- Work{World: response.World, Turn: response.Turn}
 }
 
 func requestAliveCells(client rpc.Client) AliveCells {
@@ -115,18 +115,6 @@ func requestReconnect(client rpc.Client) string {
 	client.Call(stubs.ReconnectHandler, request, response)
 	return response.Message
 }
-
-/*
-	TODO: fix race condition. The reason behind the race condition is that at the end of the controller
-	we make an RPC call to get the result back, and this RPC call will only terminate once we get a response.
-	Meanwhile it's waiting for a response, if the computation at the engine is taking longer than two seconds
-	the ticker will cause another rpc call to be made, while we're already waiting for a response. This will
-	cause a data race.
-
-	There's one workaround that I can think of, create a new channel that the ticker, every two seconds, sends the
-	turn it's currently on down, and if this turn is within 50 turns of p.Turns, we send a request to get the
-	results and we stop the ticker.
-*/
 
 func controller(p Params, c controllerChannels) {
 
@@ -173,13 +161,32 @@ func controller(p Params, c controllerChannels) {
 	}
 
 	// Anonymous goroutine to allow for ticker to be run in the background along with registering keypresses
+	// ticker := time.NewTicker(2 * time.Second)
+	resultsChan := make(chan Work)
 	ticker := time.NewTicker(2 * time.Second)
+
+	// If there are few turns to calculate or the image is small we don't need the ticker because computation will finish before the ticker gets the chance to
+	// request the alive cells from the engine
+	if (p.Turns < 100) || (p.ImageHeight < 512) {
+		ticker.Stop()
+		go requestResults(*client, resultsChan)
+	}
+
 	go func(paused bool) {
 		for {
 			select {
 			case <-ticker.C:
 				aliveCells := requestAliveCells(*client)
-				c.events <- AliveCellsCount{CompletedTurns: aliveCells.CompletedTurns, CellsCount: aliveCells.NumAliveCells}
+
+				// If the number of completed turns by the engine are close to the total number of turns to be completed,
+				// stop the ticker so it doesn't make another RPC call, and make a RPC call to request the results from the engine.
+				if p.Turns-aliveCells.CompletedTurns <= 60 {
+					ticker.Stop()
+					go requestResults(*client, resultsChan)
+				} else {
+					c.events <- AliveCellsCount{CompletedTurns: aliveCells.CompletedTurns, CellsCount: aliveCells.NumAliveCells}
+				}
+
 			case keyPress := <-c.keyPresses:
 				switch keyPress {
 				case 's':
@@ -209,20 +216,22 @@ func controller(p Params, c controllerChannels) {
 	}(false)
 
 	// Request results
-	resultWork := requestResults(*client)
-	ticker.Stop()
-	printBoard(c, p, resultWork.World, resultWork.Turn)
+	var resultWork Work
+	select {
+	case result := <-resultsChan:
+		resultWork = result
+		printBoard(c, p, resultWork.World, resultWork.Turn)
+		// Calculate alive cells
+		c.events <- FinalTurnComplete{CompletedTurns: resultWork.Turn, Alive: calculateAliveCells(resultWork.World)}
 
-	// Calculate alive cells
-	c.events <- FinalTurnComplete{CompletedTurns: resultWork.Turn, Alive: calculateAliveCells(resultWork.World)}
+		// Make sure that the Io has finished any output before exiting.
+		c.ioCommand <- ioCheckIdle
+		<-c.ioIdle
 
-	// Make sure that the Io has finished any output before exiting.
-	c.ioCommand <- ioCheckIdle
-	<-c.ioIdle
-
-	c.events <- StateChange{resultWork.Turn, Quitting}
-	// Close the channel to stop the SDL goroutine gracefully. Removing may cause deadlock.
-	close(c.events)
+		c.events <- StateChange{resultWork.Turn, Quitting}
+		// Close the channel to stop the SDL goroutine gracefully. Removing may cause deadlock.
+		close(c.events)
+	}
 }
 
 func printBoard(c controllerChannels, p Params, world [][]byte, turn int) {
