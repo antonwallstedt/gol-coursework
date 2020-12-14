@@ -123,7 +123,7 @@ func controller(p Params, c controllerChannels) {
 	if flag.Lookup("server") != nil {
 		serverIP = flag.Lookup("server").Value.String()
 	} else {
-		serverIP = "127.0.0.1:8030"
+		serverIP = "107.23.205.34:8030"
 	}
 	client, _ := rpc.Dial("tcp", serverIP)
 	defer client.Close()
