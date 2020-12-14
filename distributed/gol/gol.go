@@ -6,6 +6,12 @@ type Params struct {
 	Threads     int
 	ImageWidth  int
 	ImageHeight int
+	Reconnect   bool
+}
+
+// ConnectionParams contains information about how the connection should be done when the controller and server is started.
+type ConnectionParams struct {
+	Reconnect bool
 }
 
 // Run starts the processing of Game of Life. It should initialise channels and goroutines.
@@ -17,15 +23,16 @@ func Run(p Params, events chan<- Event, keyPresses <-chan rune) {
 	ioOutput := make(chan uint8)
 	ioInput := make(chan uint8)
 
-	distributorChannels := distributorChannels{
+	controllerChannels := controllerChannels{
 		events,
 		ioCommand,
 		ioIdle,
 		ioFilename,
 		ioOutput,
 		ioInput,
+		keyPresses,
 	}
-	go distributor(p, distributorChannels)
+	go controller(p, controllerChannels)
 
 	ioChannels := ioChannels{
 		command:  ioCommand,
