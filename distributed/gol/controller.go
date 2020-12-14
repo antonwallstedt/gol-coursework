@@ -202,7 +202,8 @@ func controller(p Params, c controllerChannels) {
 
 	// Request results
 	resultWork := requestResults(*client)
-
+	ticker.Stop()
+	printBoard(c, p, resultWork.World, p.Turns)
 	// Calculate alive cells
 	c.events <- FinalTurnComplete{CompletedTurns: resultWork.Turn, Alive: calculateAliveCells(resultWork.World)}
 
