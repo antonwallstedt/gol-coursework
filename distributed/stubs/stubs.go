@@ -1,5 +1,7 @@
 package stubs
 
+/* Engine handlers */
+
 var GameOfLifeHandler = "Engine.GameOfLife"
 var AliveCellsHandler = "Engine.AliveCells"
 var ResultsHandler = "Engine.GetResults"
@@ -8,6 +10,12 @@ var PauseHandler = "Engine.Pause"
 var StopHandler = "Engine.Stop"
 var StatusHandler = "Engine.Status"
 var ReconnectHandler = "Engine.Reconnect"
+
+/* Worker handlers */
+
+var StartWorkerHandler = "Worker.StartWorker"
+var NextStateHandler = "Worker.CalculateNextState"
+var WorkerResultHandler = "Worker.GetResult"
 
 /* Response structs */
 
@@ -46,11 +54,21 @@ type ResponseStatus struct {
 	Running bool
 }
 
+type ResponseRows struct {
+	TopRow    []byte
+	BottomRow []byte
+}
+
+type ResponseWorkerResult struct {
+	WorkerWorldPart [][]byte
+}
+
 /* Request structs */
 
 type RequestStart struct {
-	World [][]byte
-	Turns int
+	World      [][]byte
+	Turns      int
+	NumWorkers int
 }
 
 type RequestResult struct{}
@@ -66,3 +84,14 @@ type RequestStop struct{}
 type RequestStatus struct{}
 
 type RequestReconnect struct{}
+
+type RequestStartWorker struct {
+	WorkerWorld [][]byte
+}
+
+type RequestNextState struct {
+	TopRow    []byte
+	BottomRow []byte
+}
+
+type RequestWorkerResult struct{}

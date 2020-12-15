@@ -60,8 +60,8 @@ func calculateAliveCells(world [][]byte) []util.Cell {
 
 /* Functions to send RPC requests to the engine */
 
-func startGameOfLife(client rpc.Client, world [][]byte, turns int) string {
-	request := stubs.RequestStart{World: world, Turns: turns}
+func startGameOfLife(client rpc.Client, world [][]byte, turns, numWorkers int) string {
+	request := stubs.RequestStart{World: world, Turns: turns, NumWorkers: numWorkers}
 	response := new(stubs.ResponseStart)
 	client.Call(stubs.GameOfLifeHandler, request, response)
 	return response.Message
@@ -149,7 +149,7 @@ func controller(p Params, c controllerChannels) {
 		}
 
 		// Make call to server to start Game of Life
-		startGameOfLife(*client, world, p.Turns)
+		startGameOfLife(*client, world, p.Turns, p.Threads)
 
 	} else {
 		if engineRunning == false {
