@@ -9,6 +9,13 @@ import (
 	"uk.ac.bris.cs/gameoflife/stubs"
 )
 
+/*
+	TODO: potentially change how the workers are structured, so there's a loop that will wait for inputs that are provided in a request and sent through a channel.
+	This will be similar to how subscriber_loop was used in the broker/factory lab. Will have to think more about this however to see if it's actually viable.
+	If we do it this way, maybe we'd have to make it so the workers also dial the engine, but I'm not sure about this. Then it could be made so the workers just work,
+	and whenever they're done with calculating one step they make a request to the engine to get the new halos from the other workers.
+*/
+
 // Global worker world
 var globalWorkerWorld [][]byte
 
@@ -79,7 +86,7 @@ func calculateNextState(world [][]byte) [][]byte {
 
 // StartWorker : starts the worker by receiving the worker world from the RPC request and sends back halo rows
 func (w *Worker) StartWorker(req stubs.RequestStartWorker, res *stubs.ResponseRows) (err error) {
-	fmt.Println("Worker started")
+	fmt.Println("Worker started" + "\n")
 	globalWorkerWorld = req.WorkerWorld
 	globalWorkerWorld = calculateNextState(globalWorkerWorld)
 	res.TopRow = globalWorkerWorld[1]

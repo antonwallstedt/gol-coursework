@@ -212,9 +212,8 @@ func gameOfLife(numWorkers, turns int, world [][]byte, workChan chan Work, cmdCh
 		workerClients[i], _ = rpc.Dial("tcp", workerIPs[i])
 	}
 
-	topBottomRows := make([]TopBottomRows, numWorkers)
-
 	// Initiate each worker with their worker worlds
+	topBottomRows := make([]TopBottomRows, numWorkers)
 	if turns != 0 {
 		if numWorkers != 1 {
 			workerHeights := makeWorkerHeights(numWorkers, len(world))
@@ -230,9 +229,11 @@ func gameOfLife(numWorkers, turns int, world [][]byte, workChan chan Work, cmdCh
 	}
 
 	/*
-		TODO: Fix so requestAliveCells, requestPgm make request to workers to send information back
+		TODO: Fix so requestAliveCells, requestPgm make request to workers to send information back.
+
 		TODO: Fix so turns evolve properly. Right now it passes tests for 1 turn, but fails for 100, so I'd assume it's because the halo
 		communication is incorrect.
+
 		TODO: Fix so that the workers aren't requested to sequentially, this defeats the purpose of having multiple workers.
 		One idea is that instead of making a normal RPC request where we wait for a response which will block the program, start it
 		as a goroutine, and have a select statement that will register whenever it's received from. When all workers have finished
@@ -241,7 +242,7 @@ func gameOfLife(numWorkers, turns int, world [][]byte, workChan chan Work, cmdCh
 		have finished, then proceed.
 	*/
 
-	turn := 1
+	turn := 1 // 0th turn was computed when the workers started
 	running = true
 	for (turn < turns) && running {
 		select {
@@ -303,7 +304,7 @@ func gameOfLife(numWorkers, turns int, world [][]byte, workChan chan Work, cmdCh
 	}
 
 	if running == true { // only send back if the engine has been running and hasn't been stopped by the controller
-		fmt.Println("Sending world back\n")
+		fmt.Println("Sending world back" + "\n")
 		workChan <- Work{World: newWorld, Turn: turn}
 		running = false
 	}
