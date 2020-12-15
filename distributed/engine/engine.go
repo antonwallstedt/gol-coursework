@@ -108,10 +108,65 @@ func calculateNextState(world [][]byte) [][]byte {
 	return newWorld
 }
 
+//To build workerWorld for the worker
+func buildWorkerWorld(world [][]byte, workerHeight, imageHeight, imageWidth, currentThreads, Threads int) [][]byte {
+	workerWorld := make([][]byte, workerHeight+2)
+	for j := range workerWorld {
+		workerWorld[j] = make([]byte, imageWidth)
+	}
+
+	if currentThreads == Threads-1 {
+		workerHeight1 := workerHeight - imageHeight%Threads
+		for x := 0; x < imageWidth; x++ {
+			workerWorld[0][x] = world[(currentThreads*workerHeight1+imageHeight-1)%imageHeight][x]
+		}
+		for y := 1; y <= workerHeight; y++ {
+			for x := 0; x < imageWidth; x++ {
+				workerWorld[y][x] = world[currentThreads*workerHeight1+y-1][x]
+			}
+		}
+		for x := 0; x < imageWidth; x++ {
+			workerWorld[workerHeight+1][x] = world[0][x]
+		}
+
+	} else {
+		for x := 0; x < imageWidth; x++ {
+			workerWorld[0][x] = world[(currentThreads*workerHeight+imageHeight-1)%imageHeight][x]
+		}
+		for y := 1; y <= workerHeight; y++ {
+			for x := 0; x < imageWidth; x++ {
+				workerWorld[y][x] = world[currentThreads*workerHeight+y-1][x]
+			}
+		}
+		for x := 0; x < imageWidth; x++ {
+			workerWorld[workerHeight+1][x] = world[((currentThreads+1)*workerHeight+imageHeight)%imageHeight][x]
+		}
+
+	}
+
+	return workerWorld
+}
+
+//Function use for worker handler
+func requestFinishedWorkerWorld(client rpc.Client, world [][]byte, imageHeight, imageWidth, paramImageHeight int) [][]byte {
+	request := stubs.RequestWorkerWorld{World: world, ImageHeight: imageHeight, ImageWidth: imageWidth, ParamsImageHeight: paramImageHeight}
+	response := new(stubs.ResponseWorkerWorld)
+	client.Call(stubs.DivideWorldHandler, request, response)
+	newWorld := response.World
+	return newWorld
+}
+
 // Evolves the Game of Life for a given number of turns and a given world
-func gameOfLife(turns int, world [][]byte, workChan chan Work, cmdChan chan int, aliveCellsChan chan AliveCells, responseMsgChan chan string, paused bool) {
+func gameOfLife(turns int, world [][]byte, Threads int, workChan chan Work, cmdChan chan int, aliveCellsChan chan AliveCells, responseMsgChan chan string, paused bool) {
+	//array of address for worker for dailing to the worker
+	workerAdress := [...]string{"18.209.152.225", "52.90.22.150", "100.25.29.149", "34.229.67.59", "54.90.33.212", "3.90.85.38", " 54.158.221.223", "54.88.225.247", "3.89.160.119", "54.89.228.110"}
+
 	turn := 0
 	running = true
+	ImageHeight := len(world)
+	ImageWidth := len(world[0])
+	workerHeight := ImageHeight / Threads
+	newWorld := makeWorld(ImageHeight, ImageWidth)
 	for (turn < turns) && running {
 		select {
 		case cmd := <-cmdChan:
@@ -142,7 +197,52 @@ func gameOfLife(turns int, world [][]byte, workChan chan Work, cmdChan chan int,
 		default:
 		}
 
-		world = calculateNextState(world)
+		// world = calculateNextState(world)
+		for i := 0; i < Threads; i++ {
+			go func() {
+				var serverIP string
+				if flag.Lookup("server") != nil {
+					serverIP = flag.Lookup("server").Value.String()
+				} else {
+					serverIP = fmt.Sprintln("%d:8040", workerAdress[i])
+				}
+				client, _ := rpc.Dial("tcp", serverIP)
+				defer client.Close()
+
+				if i == Threads-1 {
+					workerHeight1 := (ImageHeight / Threads) + (ImageHeight % Threads)
+					workerWorld := buildWorkerWorld(world, workerHeight1, ImageHeight, ImageWidth, i, Threads)
+					newWorkerWorld := requestFinishedWorkerWorld(*client, workerWorld, workerHeight1, ImageWidth, ImageHeight)
+					// for y := 0; y < workerHeight1+2; y++ {
+					// 	for x := 0; x < ImageWidth; x++ {
+					// 		workerChan <- workerWorld[y][x]
+					// 	}
+					// }
+					for y := 0; y < workerHeight1; y++ {
+						for x := 0; x < ImageWidth; x++ {
+							newWorld[i*workerHeight+y][x] = newWorkerWorld[y][x]
+						}
+					}
+				} else {
+					workerWorld := buildWorkerWorld(world, workerHeight, ImageHeight, ImageWidth, i, Threads)
+					newWorkerWorld := requestFinishedWorkerWorld(*client, workerWorld, workerHeight, ImageWidth, ImageHeight)
+					// for y := 0; y < workerHeight+2; y++ {
+					// 	for x := 0; x < ImageWidth; x++ {
+					// 		workerChan <- workerWorld[y][x]
+					// 	}
+					// }
+					for y := 0; y < workerHeight; y++ {
+						for x := 0; x < ImageWidth; x++ {
+							newWorld[i*workerHeight+y][x] = newWorkerWorld[y][x]
+						}
+					}
+				}
+			}()
+
+		}
+		x := world
+		world = newWorld
+		newWorld = x
 
 		if turn%10 == 0 && turn != 0 {
 			fmt.Println("Turn ", turn, " computed")
@@ -212,7 +312,7 @@ func (e *Engine) GameOfLife(req stubs.RequestStart, res *stubs.ResponseStart) (e
 		return
 	}
 	fmt.Println("Starting game of life")
-	go gameOfLife(req.Turns, req.World, e.workChan, e.cmdChan, e.aliveCellsChan, e.responseMsgChan, false)
+	go gameOfLife(req.Turns, req.World, req.Threads, e.workChan, e.cmdChan, e.aliveCellsChan, e.responseMsgChan, false)
 	res.Message = "received world"
 	return
 }

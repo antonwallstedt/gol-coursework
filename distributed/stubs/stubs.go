@@ -8,6 +8,7 @@ var PauseHandler = "Engine.Pause"
 var StopHandler = "Engine.Stop"
 var StatusHandler = "Engine.Status"
 var ReconnectHandler = "Engine.Reconnect"
+var DivideWorldHandler = "Worker.Calculate"
 
 /* Response structs */
 
@@ -45,12 +46,24 @@ type ResponseReconnect struct {
 type ResponseStatus struct {
 	Running bool
 }
+type ResponseWorkerWorld struct {
+	World   [][]byte
+	Message string
+}
 
 /* Request structs */
 
 type RequestStart struct {
-	World [][]byte
-	Turns int
+	World   [][]byte
+	Turns   int
+	Threads int
+}
+type RequestWorkerWorld struct {
+	World             [][]byte
+	ImageHeight       int
+	ImageWidth        int
+	ParamsImageHeight int
+	ParamsImageWidth  int
 }
 
 type RequestResult struct{}
