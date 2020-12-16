@@ -212,17 +212,12 @@ func gameOfLife(turns int, world [][]byte, Threads int, workChan chan Work, cmdC
 			go func() {
 
 				if i == Threads-1 {
+					fmt.Println("Under world")
 
 					workerHeight1 := (ImageHeight / Threads) + (ImageHeight % Threads)
-
 					workerWorld := buildWorkerWorld(world, workerHeight1, ImageHeight, ImageWidth, i, Threads)
-
 					newWorkerWorld := requestFinishedWorkerWorld(*client, workerWorld, workerHeight1, ImageWidth, ImageHeight)
-					// for y := 0; y < workerHeight1+2; y++ {
-					// 	for x := 0; x < ImageWidth; x++ {
-					// 		workerChan <- workerWorld[y][x]
-					// 	}
-					// }
+
 					for y := 0; y < workerHeight1; y++ {
 						for x := 0; x < ImageWidth; x++ {
 							newWorld[i*workerHeight+y][x] = newWorkerWorld[y][x]
@@ -232,11 +227,7 @@ func gameOfLife(turns int, world [][]byte, Threads int, workChan chan Work, cmdC
 					fmt.Println("above world")
 					workerWorld := buildWorkerWorld(world, workerHeight, ImageHeight, ImageWidth, i, Threads)
 					newWorkerWorld := requestFinishedWorkerWorld(*client, workerWorld, workerHeight, ImageWidth, ImageHeight)
-					// for y := 0; y < workerHeight+2; y++ {
-					// 	for x := 0; x < ImageWidth; x++ {
-					// 		workerChan <- workerWorld[y][x]
-					// 	}
-					// }
+
 					for y := 0; y < workerHeight; y++ {
 						for x := 0; x < ImageWidth; x++ {
 							newWorld[i*workerHeight+y][x] = newWorkerWorld[y][x]
@@ -247,13 +238,12 @@ func gameOfLife(turns int, world [][]byte, Threads int, workChan chan Work, cmdC
 
 		}
 
-		x := world
-		world = newWorld
-		newWorld = x
-
 		if turn%10 == 0 && turn != 0 {
 			fmt.Println("Turn ", turn, " computed")
 		}
+		x := world
+		x = newWorld
+		newWorld = x
 		turn++
 	}
 

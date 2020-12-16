@@ -44,7 +44,12 @@ func calculate(worldInput [][]byte, imageHeight, imageWidth, paramImageHeight in
 	for i := range world {
 		world[i] = make([]byte, imageWidth)
 	}
-	world = worldInput
+	if len(world) == len(worldInput) {
+		world = worldInput
+		fmt.Println("the world is equal in size.")
+	} else {
+		fmt.Println("the world is not equal")
+	}
 
 	newWorld := make([][]byte, imageHeight+2)
 	for i := range world {
