@@ -44,6 +44,13 @@ func main() {
 		false,
 		"Specify if controller should try to reconnect to an already running engine. Defaults to false.")
 
+	flag.IntVar(
+		&params.Threads,
+		"workers",
+		2,
+		"Specify the number of workers to use. Defaults to 2.",
+	)
+
 	flag.Parse()
 
 	fmt.Println("Threads:", params.Threads)

@@ -16,6 +16,8 @@ var ReconnectHandler = "Engine.Reconnect"
 var StartWorkerHandler = "Worker.StartWorker"
 var NextStateHandler = "Worker.CalculateNextState"
 var WorkerResultHandler = "Worker.GetResult"
+var WorkerAliveCellsHandler = "Worker.AliveCells"
+var WorkerPGMHandler = "Worker.GetPGM"
 
 /* Response structs */
 
@@ -64,6 +66,10 @@ type ResponseWorkerResult struct {
 	WorkerID        int
 }
 
+type ResponseWorkerAliveCells struct {
+	NumAliveCells int
+}
+
 /* Request structs */
 
 type RequestStart struct {
@@ -96,4 +102,6 @@ type RequestNextState struct {
 	BottomRow []byte
 }
 
-type RequestWorkerResult struct{}
+type RequestWorkerResult struct {
+	NumWorkers int
+}

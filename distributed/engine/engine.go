@@ -202,10 +202,24 @@ func requestNextState(client rpc.Client, topBottomRows TopBottomRows) TopBottomR
 	return TopBottomRows{TopRow: response.TopRow, BottomRow: response.BottomRow}
 }
 
-func requestWorkerResult(client rpc.Client) WorkerResult {
-	request := stubs.RequestWorkerResult{}
+func requestWorkerResult(client rpc.Client, numWorkers int) WorkerResult {
+	request := stubs.RequestWorkerResult{NumWorkers: numWorkers}
 	response := new(stubs.ResponseWorkerResult)
 	client.Call(stubs.WorkerResultHandler, request, response)
+	return WorkerResult{world: response.WorkerWorldPart, workerID: response.WorkerID}
+}
+
+func requestWorkerAliveCells(client rpc.Client) int {
+	request := stubs.RequestAliveCells{}
+	response := new(stubs.ResponseWorkerAliveCells)
+	client.Call(stubs.WorkerAliveCellsHandler, request, response)
+	return response.NumAliveCells
+}
+
+func requestWorkerPGM(client rpc.Client) WorkerResult {
+	request := stubs.RequestPGM{}
+	response := new(stubs.ResponseWorkerResult)
+	client.Call(stubs.WorkerPGMHandler, request, response)
 	return WorkerResult{world: response.WorkerWorldPart, workerID: response.WorkerID}
 }
 
@@ -233,12 +247,11 @@ func gameOfLife(numWorkers, turns int, world [][]byte, workChan chan Work, cmdCh
 			}
 		} else {
 			// just start computation with one worker on the original world
+			_ = requestStartWorker(*workerClients[0], world, 0)
 		}
 	}
 
 	/*
-		TODO: Fix so requestAliveCells, requestPgm make request to workers to send information back.
-
 		TODO: Fix so that the workers aren't requested to sequentially, this defeats the purpose of having multiple workers.
 		One idea is that instead of making a normal RPC request where we wait for a response which will block the program, start it
 		as a goroutine, and have a select statement that will register whenever it's received from. When all workers have finished
@@ -254,9 +267,27 @@ func gameOfLife(numWorkers, turns int, world [][]byte, workChan chan Work, cmdCh
 		case cmd := <-cmdChan:
 			switch cmd {
 			case requestAliveCells:
-				aliveCellsChan <- AliveCells{NumAliveCells: numAliveCells(world), CompletedTurns: turn}
+				// Query workers to send number of alive cells of their part (excl. halo rows) back
+				aliveCells := 0
+				for i := 0; i < numWorkers; i++ {
+					aliveCells += requestWorkerAliveCells(*workerClients[i])
+				}
+				aliveCellsChan <- AliveCells{NumAliveCells: aliveCells, CompletedTurns: turn}
 			case requestPgm:
-				workChan <- Work{World: world, Turn: turn}
+				// Query workers to send back their part back without halo rows
+				workerPGMResults := map[int][][]byte{}
+				for i := range workerClients {
+					result := requestWorkerPGM(*workerClients[i])
+					workerPGMResults[result.workerID] = result.world
+				}
+
+				// Put parts together
+				pgmWorld := makeWorld(0, 0)
+				for i := 0; i < numWorkers; i++ {
+					part := workerPGMResults[i]
+					pgmWorld = append(pgmWorld, part...)
+				}
+				workChan <- Work{World: pgmWorld, Turn: turn}
 			case requestPause:
 				if paused == false {
 					responseMsg := fmt.Sprintf("Pausing on turn %d", turn)
@@ -286,6 +317,8 @@ func gameOfLife(numWorkers, turns int, world [][]byte, workChan chan Work, cmdCh
 				newTopRow := topBottomRows[(i+numWorkers-1)%numWorkers].BottomRow
 				newBottomRow := topBottomRows[(i+1)%numWorkers].TopRow
 				tempTopBottomRows[i] = requestNextState(*workerClients[i], TopBottomRows{TopRow: newTopRow, BottomRow: newBottomRow})
+			} else if numWorkers == 1 {
+				_ = requestNextState(*workerClients[0], TopBottomRows{TopRow: nil, BottomRow: nil})
 			} else {
 				newTopRow := topBottomRows[(i+1)%numWorkers].BottomRow
 				newBottomRow := topBottomRows[(i+1)%numWorkers].TopRow
@@ -309,7 +342,7 @@ func gameOfLife(numWorkers, turns int, world [][]byte, workChan chan Work, cmdCh
 	// to their actual world.
 	workerResults := map[int][][]byte{}
 	for i := range workerClients {
-		result := requestWorkerResult(*workerClients[i])
+		result := requestWorkerResult(*workerClients[i], numWorkers)
 		workerResults[result.workerID] = result.world
 	}
 

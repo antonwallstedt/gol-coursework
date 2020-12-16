@@ -85,11 +85,24 @@ func calculateNextState(world [][]byte) [][]byte {
 	return newWorld
 }
 
+// numAliveCells : gets the number of alive cells from a given world
+func numAliveCells(world [][]byte) int {
+	aliveCells := 0
+	for y := range world {
+		for x := range world {
+			if world[y][x] == ALIVE {
+				aliveCells++
+			}
+		}
+	}
+	return aliveCells
+}
+
 // StartWorker : starts the worker by receiving the worker world from the RPC request and sends back halo rows
 func (w *Worker) StartWorker(req stubs.RequestStartWorker, res *stubs.ResponseRows) (err error) {
 	globalWorkerWorld = nil
 	workerID = req.WorkerID
-	fmt.Println("Worker started" + "\n")
+	fmt.Println("\n Worker started" + "\n")
 	globalWorkerWorld = req.WorkerWorld
 	globalWorkerWorld = calculateNextState(globalWorkerWorld)
 	res.TopRow = globalWorkerWorld[1]
@@ -99,21 +112,46 @@ func (w *Worker) StartWorker(req stubs.RequestStartWorker, res *stubs.ResponseRo
 
 // CalculateNextState : calculates the next state from given halo rows
 func (w *Worker) CalculateNextState(req stubs.RequestNextState, res *stubs.ResponseRows) (err error) {
-	topRow := req.TopRow
-	bottomRow := req.BottomRow
-	globalWorkerWorld[0] = topRow
-	globalWorkerWorld[len(globalWorkerWorld)-1] = bottomRow
-	globalWorkerWorld = calculateNextState(globalWorkerWorld)
-	res.TopRow = globalWorkerWorld[1]
-	res.BottomRow = globalWorkerWorld[len(globalWorkerWorld)-2]
+	if req.TopRow == nil && req.BottomRow == nil {
+		globalWorkerWorld = calculateNextState(globalWorkerWorld)
+	} else {
+		topRow := req.TopRow
+		bottomRow := req.BottomRow
+		globalWorkerWorld[0] = topRow
+		globalWorkerWorld[len(globalWorkerWorld)-1] = bottomRow
+		globalWorkerWorld = calculateNextState(globalWorkerWorld)
+		res.TopRow = globalWorkerWorld[1]
+		res.BottomRow = globalWorkerWorld[len(globalWorkerWorld)-2]
+	}
 	fmt.Println("Next state calculated")
 	return
 }
 
 // GetResult : Gets the result of this worker and sends it back, excluding the extra top and bottom rows
 func (w *Worker) GetResult(req stubs.RequestWorkerResult, res *stubs.ResponseWorkerResult) (err error) {
-	globalWorkerWorldPart := globalWorkerWorld[1 : len(globalWorkerWorld)-1]
-	res.WorkerWorldPart = globalWorkerWorldPart
+	if req.NumWorkers == 1 {
+		res.WorkerWorldPart = globalWorkerWorld
+		res.WorkerID = workerID
+	} else {
+		globalWorkerWorldPart := globalWorkerWorld[1 : len(globalWorkerWorld)-1]
+		res.WorkerWorldPart = globalWorkerWorldPart
+		res.WorkerID = workerID
+	}
+	return
+}
+
+// AliveCells : calculates the number of alive cells of the worker world excluding the extra top and bottom rows
+func (w *Worker) AliveCells(req stubs.RequestAliveCells, res *stubs.ResponseWorkerAliveCells) (err error) {
+	workerWorldPart := globalWorkerWorld[1 : len(globalWorkerWorld)-1]
+	aliveCells := numAliveCells(workerWorldPart)
+	res.NumAliveCells = aliveCells
+	return
+}
+
+// GetPGM : gets the current worker world part
+func (w *Worker) GetPGM(req stubs.RequestPGM, res *stubs.ResponseWorkerResult) (err error) {
+	workerWorldPart := globalWorkerWorld[1 : len(globalWorkerWorld)-1]
+	res.WorkerWorldPart = workerWorldPart
 	res.WorkerID = workerID
 	return
 }
