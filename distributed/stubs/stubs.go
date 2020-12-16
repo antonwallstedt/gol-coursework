@@ -61,6 +61,7 @@ type ResponseRows struct {
 
 type ResponseWorkerResult struct {
 	WorkerWorldPart [][]byte
+	WorkerID        int
 }
 
 /* Request structs */
@@ -87,6 +88,7 @@ type RequestReconnect struct{}
 
 type RequestStartWorker struct {
 	WorkerWorld [][]byte
+	WorkerID    int
 }
 
 type RequestNextState struct {

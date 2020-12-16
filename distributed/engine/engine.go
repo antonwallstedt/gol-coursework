@@ -51,6 +51,12 @@ type WorkerWorld struct {
 	world [][]byte
 }
 
+// WorkerResult : to allow for neat creation of slice containing each worker result and their ID
+type WorkerResult struct {
+	world    [][]byte
+	workerID int
+}
+
 const (
 	// ALIVE : pixel value for alive cells
 	ALIVE = 255
@@ -163,63 +169,65 @@ func buildWorkerWorlds(workerHeights []int, world [][]byte) []WorkerWorld {
 		currHeight += workerHeight
 		paddedWorkerHeight := workerHeight + 2 // add extra top and bottom row to account for halo rows
 		workerWorld := makeWorld(paddedWorkerHeight, worldWidth)
-		if currThread == numWorkers-1 {
-			workerWorld[0] = world[(currThread*workerHeights[0]+worldHeight-1)%worldHeight]
-			for y := 1; y < paddedWorkerHeight-1; y++ {
+		if currThread == numWorkers-1 { // bottom most part of the world
+			workerWorld[0] = world[(currThread*workerHeights[0]+worldHeight-1)%worldHeight] // set top halo row
+			workerWorld[paddedWorkerHeight-1] = world[0]                                    // set bottom halo row
+			for y := 1; y < paddedWorkerHeight-1; y++ {                                     // fill in middle
 				workerWorld[y] = world[currThread*workerHeights[0]+y-1]
 			}
-			workerWorld[paddedWorkerHeight-1] = world[0]
 			workerWorlds = append(workerWorlds, WorkerWorld{world: workerWorld})
-		} else {
+		} else { // remaining parts
 			workerWorld[0] = world[(currThread*workerHeight+worldHeight-1)%worldHeight]
+			workerWorld[paddedWorkerHeight-1] = world[((currThread+1)*workerHeight+worldHeight)%worldHeight]
 			for y := 1; y < paddedWorkerHeight-1; y++ {
 				workerWorld[y] = world[currThread*workerHeight+y-1]
 			}
-			workerWorld[paddedWorkerHeight-1] = world[((currThread+1)*workerHeight+worldHeight)%worldHeight]
 			workerWorlds = append(workerWorlds, WorkerWorld{world: workerWorld})
 		}
 	}
 	return workerWorlds
 }
 
-func requestStartWorker(client rpc.Client, workerWorld [][]byte) TopBottomRows {
-	request := stubs.RequestStartWorker{WorkerWorld: workerWorld}
+func requestStartWorker(client rpc.Client, workerWorld [][]byte, workerID int) TopBottomRows {
+	request := stubs.RequestStartWorker{WorkerWorld: workerWorld, WorkerID: workerID}
 	response := new(stubs.ResponseRows)
 	client.Call(stubs.StartWorkerHandler, request, response)
 	return TopBottomRows{TopRow: response.TopRow, BottomRow: response.BottomRow}
 }
 
-func requestNextState(client rpc.Client, halos TopBottomRows) TopBottomRows {
-	request := stubs.RequestNextState{TopRow: halos.TopRow, BottomRow: halos.BottomRow}
+func requestNextState(client rpc.Client, topBottomRows TopBottomRows) TopBottomRows {
+	request := stubs.RequestNextState{TopRow: topBottomRows.TopRow, BottomRow: topBottomRows.BottomRow}
 	response := new(stubs.ResponseRows)
 	client.Call(stubs.NextStateHandler, request, response)
 	return TopBottomRows{TopRow: response.TopRow, BottomRow: response.BottomRow}
 }
 
-func requestWorkerResult(client rpc.Client) [][]byte {
+func requestWorkerResult(client rpc.Client) WorkerResult {
 	request := stubs.RequestWorkerResult{}
 	response := new(stubs.ResponseWorkerResult)
 	client.Call(stubs.WorkerResultHandler, request, response)
-	return response.WorkerWorldPart
+	return WorkerResult{world: response.WorkerWorldPart, workerID: response.WorkerID}
 }
 
 // Evolves the Game of Life for a given number of turns and a given world
 func gameOfLife(numWorkers, turns int, world [][]byte, workChan chan Work, cmdChan chan int, aliveCellsChan chan AliveCells, responseMsgChan chan string, paused bool) {
 
 	// Connect to each worker
-	workerClients := make(map[int]*rpc.Client, numWorkers)
+	workerClients := make([]*rpc.Client, numWorkers)
 	for i := 0; i < numWorkers; i++ {
 		workerClients[i], _ = rpc.Dial("tcp", workerIPs[i])
 	}
 
-	// Initiate each worker with their worker worlds
+	// Initiate each worker with their worker worlds.
+	// This has to be done before the loop, because we want to hand the worlds over to each worker in a RPC call before we can
+	// loop through each turn and make them calculate the next state.
 	topBottomRows := make([]TopBottomRows, numWorkers)
 	if turns != 0 {
 		if numWorkers != 1 {
 			workerHeights := makeWorkerHeights(numWorkers, len(world))
 			workerWorlds := buildWorkerWorlds(workerHeights, world)
 			for i := range workerWorlds {
-				rows := requestStartWorker(*workerClients[i], workerWorlds[i].world)
+				rows := requestStartWorker(*workerClients[i], workerWorlds[i].world, i)
 				topBottomRows[i].TopRow = rows.TopRow
 				topBottomRows[i].BottomRow = rows.BottomRow
 			}
@@ -230,9 +238,6 @@ func gameOfLife(numWorkers, turns int, world [][]byte, workChan chan Work, cmdCh
 
 	/*
 		TODO: Fix so requestAliveCells, requestPgm make request to workers to send information back.
-
-		TODO: Fix so turns evolve properly. Right now it passes tests for 1 turn, but fails for 100, so I'd assume it's because the halo
-		communication is incorrect.
 
 		TODO: Fix so that the workers aren't requested to sequentially, this defeats the purpose of having multiple workers.
 		One idea is that instead of making a normal RPC request where we wait for a response which will block the program, start it
@@ -274,16 +279,23 @@ func gameOfLife(numWorkers, turns int, world [][]byte, workChan chan Work, cmdCh
 		default:
 		}
 
-		for i := range topBottomRows {
+		// Calculate the next state and communicate the halo rows in between the workers
+		tempTopBottomRows := make([]TopBottomRows, numWorkers)
+		for i := 0; i < numWorkers; i++ {
 			if numWorkers != 2 {
 				newTopRow := topBottomRows[(i+numWorkers-1)%numWorkers].BottomRow
 				newBottomRow := topBottomRows[(i+1)%numWorkers].TopRow
-				topBottomRows[i] = requestNextState(*workerClients[i], TopBottomRows{TopRow: newTopRow, BottomRow: newBottomRow})
+				tempTopBottomRows[i] = requestNextState(*workerClients[i], TopBottomRows{TopRow: newTopRow, BottomRow: newBottomRow})
 			} else {
 				newTopRow := topBottomRows[(i+1)%numWorkers].BottomRow
 				newBottomRow := topBottomRows[(i+1)%numWorkers].TopRow
-				topBottomRows[i] = requestNextState(*workerClients[i], TopBottomRows{TopRow: newTopRow, BottomRow: newBottomRow})
+				tempTopBottomRows[i] = requestNextState(*workerClients[i], TopBottomRows{TopRow: newTopRow, BottomRow: newBottomRow})
 			}
+		}
+
+		// Update the top and bottom rows for each of the worker worlds after the next state has been calculated for all of them
+		for i := range topBottomRows {
+			topBottomRows[i] = tempTopBottomRows[i]
 		}
 
 		if turn%10 == 0 && turn != 0 {
@@ -292,20 +304,31 @@ func gameOfLife(numWorkers, turns int, world [][]byte, workChan chan Work, cmdCh
 		turn++
 	}
 
+	// Store the worker result in a map, where the key is the worker ID of each worker with their corresponding world.
+	// Since maps are not ordered, the workerID has to be retrieved from the workers so we are 100% certain the key corresponds
+	// to their actual world.
 	workerResults := map[int][][]byte{}
 	for i := range workerClients {
-		workerResults[i] = requestWorkerResult(*workerClients[i])
+		result := requestWorkerResult(*workerClients[i])
+		workerResults[result.workerID] = result.world
 	}
 
+	// Go through the map like this rather than using range, as maps are unordered
 	newWorld := makeWorld(0, 0)
-	for i := range workerResults {
+	for i := 0; i < numWorkers; i++ {
 		part := workerResults[i]
 		newWorld = append(newWorld, part...)
 	}
 
 	if running == true { // only send back if the engine has been running and hasn't been stopped by the controller
 		fmt.Println("Sending world back" + "\n")
-		workChan <- Work{World: newWorld, Turn: turn}
+		if turns != 0 {
+			workChan <- Work{World: newWorld, Turn: turn}
+		} else {
+			// This is for the testing framework, since the first step is calculated as a way of initialising the workers we don't want to send back a world
+			// that which next state has been calculated, if the number of turns specified by the testing framework is 0. So send back the old world
+			workChan <- Work{World: world, Turn: turn}
+		}
 		running = false
 	}
 }
@@ -330,12 +353,14 @@ func getPGM(workChan chan Work, cmdChan chan int) Work {
 	return Work{work.World, work.Turn}
 }
 
+// Sends pause command to current process
 func pause(cmdChan chan int, responseMsgChan chan string) string {
 	cmdChan <- requestPause
 	response := <-responseMsgChan
 	return response
 }
 
+// Commands the engine to stop processing the game
 func stop(cmdChan chan int) string {
 	if running == true {
 		cmdChan <- requestStop
@@ -344,6 +369,7 @@ func stop(cmdChan chan int) string {
 	return "Engine is not running"
 }
 
+// String to send back to controller when it's been connected to the engine
 func reconnect() string {
 	return "Controller reconnected to engine"
 }

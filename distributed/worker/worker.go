@@ -18,6 +18,7 @@ import (
 
 // Global worker world
 var globalWorkerWorld [][]byte
+var workerID int
 
 const (
 	// ALIVE : pixel value for alive cells
@@ -86,11 +87,13 @@ func calculateNextState(world [][]byte) [][]byte {
 
 // StartWorker : starts the worker by receiving the worker world from the RPC request and sends back halo rows
 func (w *Worker) StartWorker(req stubs.RequestStartWorker, res *stubs.ResponseRows) (err error) {
+	globalWorkerWorld = nil
+	workerID = req.WorkerID
 	fmt.Println("Worker started" + "\n")
 	globalWorkerWorld = req.WorkerWorld
 	globalWorkerWorld = calculateNextState(globalWorkerWorld)
 	res.TopRow = globalWorkerWorld[1]
-	res.BottomRow = globalWorkerWorld[len(globalWorkerWorld)-1]
+	res.BottomRow = globalWorkerWorld[len(globalWorkerWorld)-2]
 	return
 }
 
@@ -102,7 +105,7 @@ func (w *Worker) CalculateNextState(req stubs.RequestNextState, res *stubs.Respo
 	globalWorkerWorld[len(globalWorkerWorld)-1] = bottomRow
 	globalWorkerWorld = calculateNextState(globalWorkerWorld)
 	res.TopRow = globalWorkerWorld[1]
-	res.BottomRow = globalWorkerWorld[len(globalWorkerWorld)-1]
+	res.BottomRow = globalWorkerWorld[len(globalWorkerWorld)-2]
 	fmt.Println("Next state calculated")
 	return
 }
@@ -111,6 +114,7 @@ func (w *Worker) CalculateNextState(req stubs.RequestNextState, res *stubs.Respo
 func (w *Worker) GetResult(req stubs.RequestWorkerResult, res *stubs.ResponseWorkerResult) (err error) {
 	globalWorkerWorldPart := globalWorkerWorld[1 : len(globalWorkerWorld)-1]
 	res.WorkerWorldPart = globalWorkerWorldPart
+	res.WorkerID = workerID
 	return
 }
 
