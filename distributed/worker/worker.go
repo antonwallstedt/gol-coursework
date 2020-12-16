@@ -38,7 +38,6 @@ func calculateNeighbours(imageHeight, imageWidth, x, y int, world [][]byte) int 
 }
 
 func calculate(worldInput [][]byte, imageHeight, imageWidth, paramImageHeight int) [][]byte {
-
 	world := make([][]byte, imageHeight+2)
 	for i := range world {
 		world[i] = make([]byte, imageWidth)

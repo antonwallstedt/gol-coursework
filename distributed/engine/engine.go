@@ -159,7 +159,7 @@ func requestFinishedWorkerWorld(client rpc.Client, world [][]byte, imageHeight, 
 // Evolves the Game of Life for a given number of turns and a given world
 func gameOfLife(turns int, world [][]byte, Threads int, workChan chan Work, cmdChan chan int, aliveCellsChan chan AliveCells, responseMsgChan chan string, paused bool) {
 	//array of address for worker for dailing to the worker
-	workerAdress := [...]string{"18.209.152.225", "52.90.22.150", "100.25.29.149", "34.229.67.59", "54.90.33.212", "3.90.85.38", " 54.158.221.223", "54.88.225.247", "3.89.160.119", "54.89.228.110"}
+	// workerAdress := [...]string{"54.208.52.95", "52.90.22.150", "100.25.29.149", "34.229.67.59", "54.90.33.212", "3.90.85.38", " 54.158.221.223", "54.88.225.247", "3.89.160.119", "54.89.228.110"}
 
 	turn := 0
 	running = true
@@ -199,16 +199,15 @@ func gameOfLife(turns int, world [][]byte, Threads int, workChan chan Work, cmdC
 
 		// world = calculateNextState(world)
 		for i := 0; i < Threads; i++ {
+			var serverIP string
+			if flag.Lookup("server") != nil {
+				serverIP = flag.Lookup("server").Value.String()
+			} else {
+				serverIP = "127.0.0.1:8040"
+			}
+			client, _ := rpc.Dial("tcp", serverIP)
+			defer client.Close()
 			go func() {
-				var serverIP string
-				if flag.Lookup("server") != nil {
-					serverIP = flag.Lookup("server").Value.String()
-				} else {
-					serverIP = fmt.Sprintln("%d:8040", workerAdress[i])
-				}
-				client, _ := rpc.Dial("tcp", serverIP)
-				defer client.Close()
-
 				if i == Threads-1 {
 					workerHeight1 := (ImageHeight / Threads) + (ImageHeight % Threads)
 					workerWorld := buildWorkerWorld(world, workerHeight1, ImageHeight, ImageWidth, i, Threads)
