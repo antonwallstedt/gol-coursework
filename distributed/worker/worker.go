@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"flag"
+	"fmt"
 	"math/rand"
 	"net"
 	"net/rpc"
@@ -38,6 +39,7 @@ func calculateNeighbours(imageHeight, imageWidth, x, y int, world [][]byte) int 
 }
 
 func calculate(worldInput [][]byte, imageHeight, imageWidth, paramImageHeight int) [][]byte {
+	fmt.Println(imageHeight)
 	world := make([][]byte, imageHeight+2)
 	for i := range world {
 		world[i] = make([]byte, imageWidth)
@@ -87,12 +89,15 @@ type Worker struct {
 }
 
 func (w *Worker) Calculate(req stubs.RequestWorkerWorld, res *stubs.ResponseWorkerWorld) (err error) {
+
 	if req.World == nil {
 		err = errors.New("a world must be specified")
 		res.Message = "invalid world"
 		return
 	}
-	calculate(req.World, req.ImageHeight, req.ImageWidth, req.ParamsImageHeight)
+
+	newWorld := calculate(req.World, req.ImageHeight, req.ImageWidth, req.ParamsImageHeight)
+	res.World = newWorld
 	res.Message = "recieved workerWorld"
 	return
 }

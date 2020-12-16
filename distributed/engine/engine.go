@@ -110,6 +110,7 @@ func calculateNextState(world [][]byte) [][]byte {
 
 //To build workerWorld for the worker
 func buildWorkerWorld(world [][]byte, workerHeight, imageHeight, imageWidth, currentThreads, Threads int) [][]byte {
+
 	workerWorld := make([][]byte, workerHeight+2)
 	for j := range workerWorld {
 		workerWorld[j] = make([]byte, imageWidth)
@@ -141,7 +142,6 @@ func buildWorkerWorld(world [][]byte, workerHeight, imageHeight, imageWidth, cur
 		for x := 0; x < imageWidth; x++ {
 			workerWorld[workerHeight+1][x] = world[((currentThreads+1)*workerHeight+imageHeight)%imageHeight][x]
 		}
-
 	}
 
 	return workerWorld
@@ -199,6 +199,7 @@ func gameOfLife(turns int, world [][]byte, Threads int, workChan chan Work, cmdC
 
 		// world = calculateNextState(world)
 		for i := 0; i < Threads; i++ {
+			fmt.Println("the thread right now is %d and the whole thread is %d and the turn is %d", i, Threads, turn)
 			var serverIP string
 			if flag.Lookup("server") != nil {
 				serverIP = flag.Lookup("server").Value.String()
@@ -207,10 +208,15 @@ func gameOfLife(turns int, world [][]byte, Threads int, workChan chan Work, cmdC
 			}
 			client, _ := rpc.Dial("tcp", serverIP)
 			defer client.Close()
+
 			go func() {
+
 				if i == Threads-1 {
+
 					workerHeight1 := (ImageHeight / Threads) + (ImageHeight % Threads)
+
 					workerWorld := buildWorkerWorld(world, workerHeight1, ImageHeight, ImageWidth, i, Threads)
+
 					newWorkerWorld := requestFinishedWorkerWorld(*client, workerWorld, workerHeight1, ImageWidth, ImageHeight)
 					// for y := 0; y < workerHeight1+2; y++ {
 					// 	for x := 0; x < ImageWidth; x++ {
@@ -223,6 +229,7 @@ func gameOfLife(turns int, world [][]byte, Threads int, workChan chan Work, cmdC
 						}
 					}
 				} else {
+					fmt.Println("above world")
 					workerWorld := buildWorkerWorld(world, workerHeight, ImageHeight, ImageWidth, i, Threads)
 					newWorkerWorld := requestFinishedWorkerWorld(*client, workerWorld, workerHeight, ImageWidth, ImageHeight)
 					// for y := 0; y < workerHeight+2; y++ {
@@ -239,6 +246,7 @@ func gameOfLife(turns int, world [][]byte, Threads int, workChan chan Work, cmdC
 			}()
 
 		}
+
 		x := world
 		world = newWorld
 		newWorld = x
