@@ -242,6 +242,7 @@ func gameOfLife(numWorkers, turns int, world [][]byte, workChan chan Work, cmdCh
 	// Connect to each worker
 	var err error
 	workerClients := make([]*rpc.Client, numWorkers)
+	fmt.Println()
 	for i := 0; i < numWorkers; i++ {
 		workerClients[i], err = rpc.Dial("tcp", workerIPs[i])
 		fmt.Println("Connected to worker: ", workerIPs[i])
@@ -249,6 +250,7 @@ func gameOfLife(numWorkers, turns int, world [][]byte, workChan chan Work, cmdCh
 			panic(err)
 		}
 	}
+	fmt.Println()
 
 	// Initiate each worker with their worker worlds.
 	// This has to be done before the loop, because we want to hand the worlds over to each worker in a RPC call before we can
@@ -319,7 +321,7 @@ func gameOfLife(numWorkers, turns int, world [][]byte, workChan chan Work, cmdCh
 					}
 				}
 			case requestStop:
-				fmt.Println("Stopping computation")
+				fmt.Println("Stopping computation" + "\n")
 				running = false
 			}
 		default:

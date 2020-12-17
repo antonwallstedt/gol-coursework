@@ -114,6 +114,7 @@ func (w *Worker) StartWorker(req stubs.RequestStartWorker, res *stubs.ResponseRo
 func (w *Worker) CalculateNextState(req stubs.RequestNextState, res *stubs.ResponseRows) (err error) {
 	if req.TopRow == nil && req.BottomRow == nil {
 		globalWorkerWorld = calculateNextState(globalWorkerWorld)
+		fmt.Println("Next state calculated")
 	} else {
 		topRow := req.TopRow
 		bottomRow := req.BottomRow
@@ -122,8 +123,8 @@ func (w *Worker) CalculateNextState(req stubs.RequestNextState, res *stubs.Respo
 		globalWorkerWorld = calculateNextState(globalWorkerWorld)
 		res.TopRow = globalWorkerWorld[1]
 		res.BottomRow = globalWorkerWorld[len(globalWorkerWorld)-2]
+		fmt.Println("Next state calculated")
 	}
-	fmt.Println("Next state calculated")
 	return
 }
 
