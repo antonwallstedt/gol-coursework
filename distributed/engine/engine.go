@@ -24,8 +24,6 @@ var workerIPs = map[int]string{
 	5: "3.84.235.197:8050",
 	6: "54.225.16.212:8050",
 	7: "3.84.199.130:8050",
-	8: "3.80.129.107:8050",
-	9: "127.0.0.1:8059",
 }
 
 // Work : used to send work to the engine and to receive work from the engine
@@ -246,6 +244,7 @@ func gameOfLife(numWorkers, turns int, world [][]byte, workChan chan Work, cmdCh
 	workerClients := make([]*rpc.Client, numWorkers)
 	for i := 0; i < numWorkers; i++ {
 		workerClients[i], err = rpc.Dial("tcp", workerIPs[i])
+		fmt.Println("Connected to worker: ", workerIPs[i])
 		if err != nil {
 			panic(err)
 		}
@@ -438,6 +437,7 @@ func (e *Engine) GameOfLife(req stubs.RequestStart, res *stubs.ResponseStart) (e
 	}
 	fmt.Println("Starting game of life")
 	go gameOfLife(req.NumWorkers, req.Turns, req.World, e.workChan, e.cmdChan, e.aliveCellsChan, e.responseMsgChan, false)
+	fmt.Println("I'm here")
 	res.Message = "received world"
 	return
 }
