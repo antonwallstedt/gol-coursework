@@ -10,6 +10,7 @@ var PauseHandler = "Engine.Pause"
 var StopHandler = "Engine.Stop"
 var StatusHandler = "Engine.Status"
 var ReconnectHandler = "Engine.Reconnect"
+var StopWorkersHandler = "Engine.StopWorkers"
 
 /* Worker handlers */
 
@@ -17,6 +18,7 @@ var StartWorkerHandler = "Worker.StartWorker"
 var NextStateHandler = "Worker.CalculateNextState"
 var WorkerResultHandler = "Worker.GetResult"
 var WorkerPGMHandler = "Worker.GetPGM"
+var StopWorkerHandler = "Worker.Stop"
 
 /* Response structs */
 
@@ -65,6 +67,12 @@ type ResponseWorkerResult struct {
 	WorkerID        int
 }
 
+type ResponseStopWorkers struct {
+	OK bool
+}
+
+type ResponseStopWorker struct{}
+
 /* Request structs */
 
 type RequestStart struct {
@@ -100,3 +108,7 @@ type RequestNextState struct {
 type RequestWorkerResult struct {
 	NumWorkers int
 }
+
+type RequestStopWorkers struct{}
+
+type RequestStopWorker struct{}

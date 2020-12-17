@@ -116,6 +116,13 @@ func requestReconnect(client rpc.Client) string {
 	return response.Message
 }
 
+func requestStopWorkers(client rpc.Client) bool {
+	request := stubs.RequestStopWorkers{}
+	response := new(stubs.ResponseStopWorkers)
+	client.Call(stubs.StopWorkersHandler, request, response)
+	return response.OK
+}
+
 func controller(p Params, c controllerChannels) {
 
 	// Dial server
@@ -123,7 +130,7 @@ func controller(p Params, c controllerChannels) {
 	if flag.Lookup("server") != nil {
 		serverIP = flag.Lookup("server").Value.String()
 	} else {
-		serverIP = "3.234.210.18:8030"
+		serverIP = "127.0.0.1:8030"
 	}
 	client, _ := rpc.Dial("tcp", serverIP)
 
@@ -206,7 +213,13 @@ func controller(p Params, c controllerChannels) {
 						default:
 						}
 					}
+				case 'k':
+					ok := requestStopWorkers(*client)
+					if ok {
+						os.Exit(0)
+					}
 				}
+
 			case <-quitChan:
 				return
 			default:

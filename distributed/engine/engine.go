@@ -7,6 +7,7 @@ import (
 	"math/rand"
 	"net"
 	"net/rpc"
+	"os"
 	"time"
 
 	"uk.ac.bris.cs/gameoflife/stubs"
@@ -70,6 +71,7 @@ const (
 	requestPgm
 	requestPause
 	requestStop
+	requestStopWorkers
 )
 
 var running = false
@@ -238,8 +240,15 @@ func requestWorkerPGM(client rpc.Client) WorkerResult {
 	return WorkerResult{world: response.WorkerWorldPart, workerID: response.WorkerID}
 }
 
+func requestStopWorker(client rpc.Client) {
+	request := stubs.RequestStopWorker{}
+	response := new(stubs.ResponseStopWorker)
+	client.Call(stubs.StopWorkerHandler, request, response)
+	return
+}
+
 // Evolves the Game of Life for a given number of turns and a given world
-func gameOfLife(numWorkers, turns int, world [][]byte, workChan chan Work, cmdChan chan int, aliveCellsChan chan AliveCells, responseMsgChan chan string, paused bool) {
+func gameOfLife(numWorkers, turns int, world [][]byte, workChan chan Work, cmdChan chan int, aliveCellsChan chan AliveCells, responseMsgChan chan string, okChan chan bool, paused bool) {
 
 	// Connect to each worker
 	var err error
@@ -322,6 +331,14 @@ func gameOfLife(numWorkers, turns int, world [][]byte, workChan chan Work, cmdCh
 			case requestStop:
 				fmt.Println("Stopping computation" + "\n")
 				running = false
+			case requestStopWorkers:
+				for i := 0; i < numWorkers; i++ {
+					requestStopWorker(*workerClients[i])
+				}
+				fmt.Println("Stopping computation" + "\n")
+				okChan <- true
+				time.Sleep(2 * time.Second)
+				os.Exit(0)
 			}
 		default:
 		}
@@ -427,6 +444,7 @@ type Engine struct {
 	aliveCellsChan  chan AliveCells
 	cmdChan         chan int
 	responseMsgChan chan string
+	okChan          chan bool
 }
 
 // GameOfLife : runs the game of life after getting a request from the controller
@@ -437,7 +455,7 @@ func (e *Engine) GameOfLife(req stubs.RequestStart, res *stubs.ResponseStart) (e
 		return
 	}
 	fmt.Println("Starting game of life")
-	go gameOfLife(req.NumWorkers, req.Turns, req.World, e.workChan, e.cmdChan, e.aliveCellsChan, e.responseMsgChan, false)
+	go gameOfLife(req.NumWorkers, req.Turns, req.World, e.workChan, e.cmdChan, e.aliveCellsChan, e.responseMsgChan, e.okChan, false)
 	res.Message = "received world"
 	return
 }
@@ -492,11 +510,20 @@ func (e *Engine) Reconnect(req stubs.RequestReconnect, res *stubs.ResponseReconn
 	return
 }
 
+// StopWorkers : commands the engine to send out requests to workers to be stopped
+func (e *Engine) StopWorkers(req stubs.RequestStopWorkers, res *stubs.ResponseStopWorkers) (err error) {
+	e.cmdChan <- requestStopWorkers
+	response := <-e.okChan
+	res.OK = response
+	return
+}
+
 func main() {
 	workChan := make(chan Work)
 	aliveCellsChan := make(chan AliveCells)
 	cmdChan := make(chan int)
 	responseMsgChan := make(chan string)
+	okChan := make(chan bool)
 	pAddr := flag.String("port", "8030", "Port to listen on")
 	flag.Parse()
 	rand.Seed(time.Now().UnixNano())
@@ -505,6 +532,7 @@ func main() {
 		aliveCellsChan:  aliveCellsChan,
 		cmdChan:         cmdChan,
 		responseMsgChan: responseMsgChan,
+		okChan:          okChan,
 	})
 	listener, _ := net.Listen("tcp", ":"+*pAddr)
 	defer listener.Close()
