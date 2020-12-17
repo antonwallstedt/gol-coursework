@@ -60,8 +60,8 @@ func calculateAliveCells(world [][]byte) []util.Cell {
 
 /* Functions to send RPC requests to the engine */
 
-func startGameOfLife(client rpc.Client, world [][]byte, turns int) string {
-	request := stubs.RequestStart{World: world, Turns: turns}
+func startGameOfLife(client rpc.Client, world [][]byte, turns, numWorkers int) string {
+	request := stubs.RequestStart{World: world, Turns: turns, NumWorkers: numWorkers}
 	response := new(stubs.ResponseStart)
 	client.Call(stubs.GameOfLifeHandler, request, response)
 	return response.Message
@@ -126,7 +126,6 @@ func controller(p Params, c controllerChannels) {
 		serverIP = "127.0.0.1:8030"
 	}
 	client, _ := rpc.Dial("tcp", serverIP)
-	defer client.Close()
 
 	engineRunning := requestStatus(*client)
 	if p.Reconnect != true {
@@ -149,7 +148,7 @@ func controller(p Params, c controllerChannels) {
 		}
 
 		// Make call to server to start Game of Life
-		startGameOfLife(*client, world, p.Turns)
+		startGameOfLife(*client, world, p.Turns, p.Threads)
 
 	} else {
 		if engineRunning == false {
@@ -160,8 +159,6 @@ func controller(p Params, c controllerChannels) {
 		}
 	}
 
-	// Anonymous goroutine to allow for ticker to be run in the background along with registering keypresses
-	// ticker := time.NewTicker(2 * time.Second)
 	resultsChan := make(chan Work)
 	ticker := time.NewTicker(2 * time.Second)
 
@@ -172,12 +169,13 @@ func controller(p Params, c controllerChannels) {
 		go requestResults(*client, resultsChan)
 	}
 
-	go func(paused bool) {
+	// Anonymous goroutine to allow for ticker to be run in the background along with registering keypresses
+	quitChannel := make(chan bool)
+	go func(paused bool, quitChan chan bool) {
 		for {
 			select {
 			case <-ticker.C:
 				aliveCells := requestAliveCells(*client)
-
 				// If the number of completed turns by the engine are close to the total number of turns to be completed,
 				// stop the ticker so it doesn't make another RPC call, and make a RPC call to request the results from the engine.
 				if p.Turns-aliveCells.CompletedTurns <= 60 {
@@ -186,7 +184,6 @@ func controller(p Params, c controllerChannels) {
 				} else {
 					c.events <- AliveCellsCount{CompletedTurns: aliveCells.CompletedTurns, CellsCount: aliveCells.NumAliveCells}
 				}
-
 			case keyPress := <-c.keyPresses:
 				switch keyPress {
 				case 's':
@@ -210,10 +207,12 @@ func controller(p Params, c controllerChannels) {
 						}
 					}
 				}
+			case <-quitChan:
+				return
 			default:
 			}
 		}
-	}(false)
+	}(false, quitChannel)
 
 	// Request results
 	var resultWork Work
@@ -229,8 +228,10 @@ func controller(p Params, c controllerChannels) {
 		<-c.ioIdle
 
 		c.events <- StateChange{resultWork.Turn, Quitting}
-		// Close the channel to stop the SDL goroutine gracefully. Removing may cause deadlock.
-		close(c.events)
+
+		quitChannel <- true // close anonymous goroutine
+		client.Close()      // close the client
+		close(c.events)     // close the channel to stop the SDL goroutine gracefully. Removing may cause deadlock.
 	}
 }
 
