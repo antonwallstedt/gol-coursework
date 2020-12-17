@@ -116,6 +116,13 @@ func requestReconnect(client rpc.Client) string {
 	return response.Message
 }
 
+func requestStopWorkers(client rpc.Client) bool {
+	request := stubs.RequestStopWorkers{}
+	response := new(stubs.ResponseStopWorkers)
+	client.Call(stubs.StopWorkersHandler, request, response)
+	return response.OK
+}
+
 func controller(p Params, c controllerChannels) {
 
 	// Dial server
@@ -205,6 +212,11 @@ func controller(p Params, c controllerChannels) {
 							}
 						default:
 						}
+					}
+				case 'k':
+					ok := requestStopWorkers(*client)
+					if ok {
+						os.Exit(0)
 					}
 				}
 			case <-quitChan:

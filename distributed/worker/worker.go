@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"net/rpc"
+	"os"
 
 	"uk.ac.bris.cs/gameoflife/stubs"
 )
@@ -146,6 +147,12 @@ func (w *Worker) GetPGM(req stubs.RequestPGM, res *stubs.ResponseWorkerResult) (
 	workerWorldPart := globalWorkerWorld[1 : len(globalWorkerWorld)-1]
 	res.WorkerWorldPart = workerWorldPart
 	res.WorkerID = workerID
+	return
+}
+
+// Stop : stops by exiting
+func (w *Worker) Stop(req stubs.RequestStopWorker, res *stubs.ResponseStopWorker) (err error) {
+	os.Exit(0)
 	return
 }
 
