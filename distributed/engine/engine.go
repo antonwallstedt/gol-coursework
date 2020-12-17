@@ -320,7 +320,7 @@ func gameOfLife(numWorkers, turns int, world [][]byte, workChan chan Work, cmdCh
 					}
 				}
 			case requestStop:
-				fmt.Println("Stopping computation")
+				fmt.Println("Stopping computation" + "\n")
 				running = false
 			}
 		default:
