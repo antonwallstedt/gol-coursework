@@ -16,14 +16,14 @@ import (
 // TODO: move everything to be run on AWS, change so the same port is being used and
 // change all of the IP addresses to match each of the AWS instances.
 var workerIPs = map[int]string{
-	0: "54.165.183.217:8050",
-	1: "3.86.185.150:8050",
-	2: "18.212.20.247:8050",
-	3: "54.89.26.91:8050",
-	4: "100.24.33.137:8050",
-	5: "3.84.235.197:8050",
-	6: "54.225.16.212:8050",
-	7: "3.84.199.130:8050",
+	0: "172.31.80.108:8050",
+	1: "172.31.92.159:8050",
+	2: "172.31.93.105:8050",
+	3: "172.31.81.53:8050",
+	4: "172.31.89.131:8050",
+	5: "172.31.92.21:8050",
+	6: "172.31.86.7:8050",
+	7: "172.31.85.232:8050",
 }
 
 // Work : used to send work to the engine and to receive work from the engine
@@ -243,7 +243,6 @@ func gameOfLife(numWorkers, turns int, world [][]byte, workChan chan Work, cmdCh
 	var err error
 	workerClients := make([]*rpc.Client, numWorkers)
 	for i := 0; i < numWorkers; i++ {
-		fmt.Println("I'm here")
 		workerClients[i], err = rpc.Dial("tcp", workerIPs[i])
 		fmt.Println("Connected to worker: ", workerIPs[i])
 		if err != nil {
