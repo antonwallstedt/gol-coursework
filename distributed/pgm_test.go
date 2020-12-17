@@ -3,11 +3,12 @@ package main
 import (
 	"fmt"
 	"testing"
+
 	"uk.ac.bris.cs/gameoflife/gol"
 	"uk.ac.bris.cs/gameoflife/util"
 )
 
-// Pgm tests 16x16, 64x64 and 512x512 image output files on 0, 1 and 100 turns using 1-16 worker threads.
+// Pgm tests 16x16, 64x64 and 512x512 image output files on 0, 1 and 100 turns using 1-10 worker threads.
 func TestPgm(t *testing.T) {
 	tests := []gol.Params{
 		{ImageWidth: 16, ImageHeight: 16},
@@ -22,7 +23,7 @@ func TestPgm(t *testing.T) {
 				p.ImageWidth,
 				p.ImageHeight,
 			)
-			for threads := 1; threads <= 16; threads++ {
+			for threads := 1; threads <= 10; threads++ {
 				p.Threads = threads
 				testName := fmt.Sprintf("%dx%dx%d-%d", p.ImageWidth, p.ImageHeight, p.Turns, p.Threads)
 				t.Run(testName, func(t *testing.T) {

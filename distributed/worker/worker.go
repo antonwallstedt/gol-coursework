@@ -140,14 +140,6 @@ func (w *Worker) GetResult(req stubs.RequestWorkerResult, res *stubs.ResponseWor
 	return
 }
 
-// AliveCells : calculates the number of alive cells of the worker world excluding the extra top and bottom rows
-func (w *Worker) AliveCells(req stubs.RequestAliveCells, res *stubs.ResponseWorkerAliveCells) (err error) {
-	workerWorldPart := globalWorkerWorld[1 : len(globalWorkerWorld)-1]
-	aliveCells := numAliveCells(workerWorldPart)
-	res.NumAliveCells = aliveCells
-	return
-}
-
 // GetPGM : gets the current worker world part
 func (w *Worker) GetPGM(req stubs.RequestPGM, res *stubs.ResponseWorkerResult) (err error) {
 	workerWorldPart := globalWorkerWorld[1 : len(globalWorkerWorld)-1]

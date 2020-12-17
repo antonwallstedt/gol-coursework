@@ -188,6 +188,28 @@ func buildWorkerWorlds(workerHeights []int, world [][]byte) []WorkerWorld {
 	return workerWorlds
 }
 
+func assembleWorkerParts(workerClients []*rpc.Client, numWorkers int) [][]byte {
+	// Store the worker result in a map, where the key is the worker ID of each worker with their corresponding world.
+	// Since maps are not ordered, the workerID has to be retrieved from the workers so we are 100% certain the key corresponds
+	// to their actual world.
+	workerParts := map[int][][]byte{}
+	for i := 0; i < numWorkers; i++ {
+		workerPartResult := requestWorkerResult(*workerClients[i], numWorkers)
+		workerParts[workerPartResult.workerID] = workerPartResult.world
+	}
+
+	// Loop through like this rather than using range, as maps are unordered
+	workerResult := makeWorld(0, 0)
+	for i := 0; i < numWorkers; i++ {
+		part := workerParts[i]
+		workerResult = append(workerResult, part...)
+	}
+
+	return workerResult
+}
+
+/* RCP calls */
+
 func requestStartWorker(client rpc.Client, workerWorld [][]byte, workerID int) TopBottomRows {
 	request := stubs.RequestStartWorker{WorkerWorld: workerWorld, WorkerID: workerID}
 	response := new(stubs.ResponseRows)
@@ -209,13 +231,6 @@ func requestWorkerResult(client rpc.Client, numWorkers int) WorkerResult {
 	return WorkerResult{world: response.WorkerWorldPart, workerID: response.WorkerID}
 }
 
-func requestWorkerAliveCells(client rpc.Client) int {
-	request := stubs.RequestAliveCells{}
-	response := new(stubs.ResponseWorkerAliveCells)
-	client.Call(stubs.WorkerAliveCellsHandler, request, response)
-	return response.NumAliveCells
-}
-
 func requestWorkerPGM(client rpc.Client) WorkerResult {
 	request := stubs.RequestPGM{}
 	response := new(stubs.ResponseWorkerResult)
@@ -227,9 +242,13 @@ func requestWorkerPGM(client rpc.Client) WorkerResult {
 func gameOfLife(numWorkers, turns int, world [][]byte, workChan chan Work, cmdChan chan int, aliveCellsChan chan AliveCells, responseMsgChan chan string, paused bool) {
 
 	// Connect to each worker
+	var err error
 	workerClients := make([]*rpc.Client, numWorkers)
 	for i := 0; i < numWorkers; i++ {
-		workerClients[i], _ = rpc.Dial("tcp", workerIPs[i])
+		workerClients[i], err = rpc.Dial("tcp", workerIPs[i])
+		if err != nil {
+			panic(err)
+		}
 	}
 
 	// Initiate each worker with their worker worlds.
@@ -268,11 +287,8 @@ func gameOfLife(numWorkers, turns int, world [][]byte, workChan chan Work, cmdCh
 			switch cmd {
 			case requestAliveCells:
 				// Query workers to send number of alive cells of their part (excl. halo rows) back
-				aliveCells := 0
-				for i := 0; i < numWorkers; i++ {
-					aliveCells += requestWorkerAliveCells(*workerClients[i])
-				}
-				aliveCellsChan <- AliveCells{NumAliveCells: aliveCells, CompletedTurns: turn}
+				tempWorld := assembleWorkerParts(workerClients, numWorkers)
+				aliveCellsChan <- AliveCells{NumAliveCells: numAliveCells(tempWorld), CompletedTurns: turn}
 			case requestPgm:
 				// Query workers to send back their part back without halo rows
 				workerPGMResults := map[int][][]byte{}
@@ -337,32 +353,29 @@ func gameOfLife(numWorkers, turns int, world [][]byte, workChan chan Work, cmdCh
 		turn++
 	}
 
-	// Store the worker result in a map, where the key is the worker ID of each worker with their corresponding world.
-	// Since maps are not ordered, the workerID has to be retrieved from the workers so we are 100% certain the key corresponds
-	// to their actual world.
-	workerResults := map[int][][]byte{}
-	for i := range workerClients {
-		result := requestWorkerResult(*workerClients[i], numWorkers)
-		workerResults[result.workerID] = result.world
-	}
-
-	// Go through the map like this rather than using range, as maps are unordered
-	newWorld := makeWorld(0, 0)
-	for i := 0; i < numWorkers; i++ {
-		part := workerResults[i]
-		newWorld = append(newWorld, part...)
+	var newWorld [][]byte
+	if turns != 0 { // this is for the testing framework, if no turns have to be computed we don't want to request the workers for their results
+		newWorld = assembleWorkerParts(workerClients, numWorkers)
 	}
 
 	if running == true { // only send back if the engine has been running and hasn't been stopped by the controller
 		fmt.Println("Sending world back" + "\n")
 		if turns != 0 {
 			workChan <- Work{World: newWorld, Turn: turn}
+			running = false
 		} else {
 			// This is for the testing framework, since the first step is calculated as a way of initialising the workers we don't want to send back a world
 			// that which next state has been calculated, if the number of turns specified by the testing framework is 0. So send back the old world
-			workChan <- Work{World: world, Turn: turn}
+			workChan <- Work{World: world, Turn: 0}
+			running = false
 		}
-		running = false
+	}
+
+	for i := 0; i < numWorkers; i++ {
+		err := workerClients[i].Close()
+		if err != nil {
+			panic(err)
+		}
 	}
 }
 
