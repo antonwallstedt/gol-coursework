@@ -2,19 +2,21 @@ package main
 
 import (
 	"fmt"
+	"os"
 	"testing"
 
 	"uk.ac.bris.cs/gameoflife/gol"
 )
 
 const (
-	turns       = 100
+	turns       = 20
 	imageHeight = 5120
 	imageWidth  = 5120
 )
 
 func Benchmark(b *testing.B) {
 	params := gol.Params{Turns: turns, ImageHeight: imageHeight, ImageWidth: imageWidth}
+	os.Stdout = nil
 	for threads := 1; threads <= 8; threads++ {
 		params.Threads = threads
 		testName := fmt.Sprintf("%dx%dx%d-%d", params.ImageHeight, params.ImageWidth, params.Turns, params.Threads)

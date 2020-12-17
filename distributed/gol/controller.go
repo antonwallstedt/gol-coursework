@@ -130,7 +130,7 @@ func controller(p Params, c controllerChannels) {
 	if flag.Lookup("server") != nil {
 		serverIP = flag.Lookup("server").Value.String()
 	} else {
-		serverIP = "3.234.210.18:8030"
+		serverIP = "35.173.57.41:8030"
 	}
 	client, _ := rpc.Dial("tcp", serverIP)
 
@@ -185,7 +185,7 @@ func controller(p Params, c controllerChannels) {
 				aliveCells := requestAliveCells(*client)
 				// If the number of completed turns by the engine are close to the total number of turns to be completed,
 				// stop the ticker so it doesn't make another RPC call, and make a RPC call to request the results from the engine.
-				if p.Turns-aliveCells.CompletedTurns <= 60 {
+				if p.Turns-aliveCells.CompletedTurns <= 5 {
 					ticker.Stop()
 					go requestResults(*client, resultsChan)
 				} else {
