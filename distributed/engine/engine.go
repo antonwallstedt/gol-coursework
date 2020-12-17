@@ -239,6 +239,8 @@ func requestWorkerPGM(client rpc.Client) WorkerResult {
 // Evolves the Game of Life for a given number of turns and a given world
 func gameOfLife(numWorkers, turns int, world [][]byte, workChan chan Work, cmdChan chan int, aliveCellsChan chan AliveCells, responseMsgChan chan string, paused bool) {
 
+	fmt.Println("I'm here")
+
 	// Connect to each worker
 	var err error
 	workerClients := make([]*rpc.Client, numWorkers)
@@ -249,6 +251,8 @@ func gameOfLife(numWorkers, turns int, world [][]byte, workChan chan Work, cmdCh
 			panic(err)
 		}
 	}
+
+	fmt.Println("I'm here")
 
 	// Initiate each worker with their worker worlds.
 	// This has to be done before the loop, because we want to hand the worlds over to each worker in a RPC call before we can
@@ -437,7 +441,6 @@ func (e *Engine) GameOfLife(req stubs.RequestStart, res *stubs.ResponseStart) (e
 	}
 	fmt.Println("Starting game of life")
 	go gameOfLife(req.NumWorkers, req.Turns, req.World, e.workChan, e.cmdChan, e.aliveCellsChan, e.responseMsgChan, false)
-	fmt.Println("I'm here")
 	res.Message = "received world"
 	return
 }
