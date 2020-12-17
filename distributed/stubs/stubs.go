@@ -20,13 +20,6 @@ var WorkerResultHandler = "Worker.GetResult"
 var WorkerPGMHandler = "Worker.GetPGM"
 var StopWorkerHandler = "Worker.Stop"
 
-/* Worker handlers */
-
-var StartWorkerHandler = "Worker.StartWorker"
-var NextStateHandler = "Worker.CalculateNextState"
-var WorkerResultHandler = "Worker.GetResult"
-var WorkerPGMHandler = "Worker.GetPGM"
-
 /* Response structs */
 
 type ResponseStart struct {
