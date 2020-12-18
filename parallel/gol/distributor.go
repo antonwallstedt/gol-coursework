@@ -21,14 +21,6 @@ type distributorChannels struct {
 	ioOutput   chan<- uint8
 }
 
-// func buildWorkerWorld(world [][]byte, imageHeight, imageWidth, currentThreads int) [][]byte {
-// 	workerWorld := make([][]byte, imageHeight)
-// 	for r := range workerWorld {
-// 		workerWorld[r] = make([]byte, imageWidth)
-// 	}
-
-// 	return workerWorld
-// }
 //This buildworker function is used to create a world for a worker in each thread.(Example for running with thread 2, you need to divide the work for the worker in to two part)
 func buildWorkerWorld(world [][]byte, workerHeight, imageHeight, imageWidth, currentThreads, Threads int) [][]byte {
 	workerWorld := make([][]byte, workerHeight+2)
@@ -86,7 +78,7 @@ func calculateNeighbours(p Params, x, y int, world [][]byte) int {
 	return neighbours
 }
 
-//Worker is the functino that used to calculate the logic of the program and giving each byte of newWorld to distributor for finalComplete turn channel.
+//Worker is the function that used to calculate the logic of the program and giving each byte of newWorld to distributor for finalComplete turn channel.
 func worker(c distributorChannels, p Params, workerChan chan byte, imageHeight int, imageWidth int, outChan chan byte, Thread, currentThread int) {
 
 	world := make([][]byte, imageHeight+2)
@@ -140,13 +132,13 @@ func worker(c distributorChannels, p Params, workerChan chan byte, imageHeight i
 func distributor(p Params, c distributorChannels, keyPresses <-chan rune) {
 	var FinalTurnComplete FinalTurnComplete
 	var mutex sync.Mutex
-	// var AliveCellsCount AliveCellsCount
+	//Sednding signal to the IO to input the pgm file
 	c.ioCommand <- ioInput
 	c.ioFileName <- fmt.Sprintf("%vx%v", p.ImageHeight, p.ImageWidth)
 
 	var listCell []util.Cell
 
-	// TODO: Create a 2D slice to store the world.
+	//Create a 2D slice to store the world.
 	world := make([][]byte, p.ImageHeight)
 	for i := range world {
 		world[i] = make([]byte, p.ImageWidth)
@@ -157,7 +149,7 @@ func distributor(p Params, c distributorChannels, keyPresses <-chan rune) {
 	}
 	ticker := time.NewTicker(2 * time.Second)
 
-	// TODO: For all initially alive cells send a CellFlipped Event.
+	//For all initially alive cells send a CellFlipped Event.
 	for y := 0; y < p.ImageHeight; y++ {
 		for x := 0; x < p.ImageWidth; x++ {
 			input := <-c.ioInput
@@ -207,6 +199,7 @@ func distributor(p Params, c distributorChannels, keyPresses <-chan rune) {
 						}
 					}
 				}
+				//This mutex lock is used for locking event to not closing at line 278 because we get don't lock c.events will close the next two second when we try to send new aliveCell event, it will get closed channel.
 				mutex.Lock()
 				c.events <- AliveCellsCount{turn, aliveCell}
 				mutex.Unlock()
@@ -222,7 +215,7 @@ func distributor(p Params, c distributorChannels, keyPresses <-chan rune) {
 		for i := 0; i < p.Threads; i++ {
 			outChan[i] = make(chan byte)
 			workerChan := make(chan byte)
-
+			//To check if it is on the last worker and if it is true, we can add all the remaining work to last worker.
 			if i == p.Threads-1 {
 				workerHeight1 := (p.ImageHeight / p.Threads) + (p.ImageHeight % p.Threads)
 				workerWorld := buildWorkerWorld(world, workerHeight1, p.ImageHeight, p.ImageWidth, i, p.Threads)
@@ -254,6 +247,7 @@ func distributor(p Params, c distributorChannels, keyPresses <-chan rune) {
 		}
 		c.events <- TurnComplete{CompletedTurns: turn}
 
+		//Update the world to the newWorld, we do this to make sure that when we calculate new round with the new round.
 		x := world
 		world = newWorld
 		newWorld = x
@@ -270,10 +264,8 @@ func distributor(p Params, c distributorChannels, keyPresses <-chan rune) {
 	FinalTurnComplete.Alive = listCell
 	FinalTurnComplete.CompletedTurns = turn
 	c.events <- FinalTurnComplete
-	// TODO: Execute all turns of the Game of Life.
-	// TODO: Send correct Events when required, e.g. CellFlipped, TurnComplete and FinalTurnComplete.
-	//		 See event.go for a list of all events.
 
+	//Print the board for all testing round to pass all pgm test
 	printBoard(c, p, world, turn)
 
 	// Make sure that the Io has finished any output before exiting.
@@ -287,6 +279,7 @@ func distributor(p Params, c distributorChannels, keyPresses <-chan rune) {
 	close(c.events)
 }
 
+//Give signal to the IO to output the new pgm file of newState of pgm
 func printBoard(d distributorChannels, p Params, world [][]byte, turn int) {
 
 	d.ioCommand <- ioOutput
