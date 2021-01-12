@@ -20,9 +20,9 @@ var workerIPs = map[int]string{
 	0: "172.31.80.108:8050",
 	1: "172.31.92.159:8050",
 	2: "172.31.93.105:8050",
-	3: "172.31.81.53:8050",
-	4: "172.31.89.131:8050",
-	5: "172.31.92.21:8050",
+	3: "172.31.89.131:8050",
+	4: "172.31.92.21:8050",
+	5: "172.31.86.7:8050",
 	6: "172.31.86.7:8050",
 	7: "172.31.85.232:8050",
 }
@@ -280,15 +280,6 @@ func gameOfLife(numWorkers, turns int, world [][]byte, workChan chan Work, cmdCh
 		}
 	}
 
-	/*
-		TODO: Fix so that the workers aren't requested to sequentially, this defeats the purpose of having multiple workers.
-		One idea is that instead of making a normal RPC request where we wait for a response which will block the program, start it
-		as a goroutine, and have a select statement that will register whenever it's received from. When all workers have finished
-		then proceed with next turn. What's happening right now is that we make a request to one worker, wait until we get a response back,
-		then request another worker to process their part, wait for response and so on. What we want is: start all workers, wait until all of them
-		have finished, then proceed.
-	*/
-
 	turn := 1 // 0th turn was computed when the workers started
 	running = true
 	for (turn < turns) && running {
@@ -383,7 +374,7 @@ func gameOfLife(numWorkers, turns int, world [][]byte, workChan chan Work, cmdCh
 			running = false
 		} else {
 			// This is for the testing framework, since the first step is calculated as a way of initialising the workers we don't want to send back a world
-			// that which next state has been calculated, if the number of turns specified by the testing framework is 0. So send back the old world
+			// that which the next state has been calculated, if the number of turns specified by the testing framework is 0. So send back the old world
 			workChan <- Work{World: world, Turn: 0}
 			running = false
 		}

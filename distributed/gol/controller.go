@@ -130,7 +130,7 @@ func controller(p Params, c controllerChannels) {
 	if flag.Lookup("server") != nil {
 		serverIP = flag.Lookup("server").Value.String()
 	} else {
-		serverIP = "3.80.232.44:8030"
+		serverIP = "3.236.236.233:8030"
 	}
 	client, _ := rpc.Dial("tcp", serverIP)
 
@@ -240,7 +240,6 @@ func controller(p Params, c controllerChannels) {
 		<-c.ioIdle
 
 		c.events <- StateChange{resultWork.Turn, Quitting}
-
 		quitChannel <- true // close anonymous goroutine
 		client.Close()      // close the client
 		close(c.events)     // close the channel to stop the SDL goroutine gracefully. Removing may cause deadlock.
